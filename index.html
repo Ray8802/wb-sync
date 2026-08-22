@@ -1689,6 +1689,7 @@ const WBSync = (function(){
     if(current && !STOCKS.includes(current)){ current=STOCKS[0]||null; if(current&&typeof selectStock==='function') selectStock(current); else if(typeof renderDetailHeader==='function') renderDetailHeader(null); }
     const ds=recs['setting:dataMode'];
     if(ds && ds.value && ds.value!==dataMode && typeof applyDataMode==='function'){ applyDataMode(ds.value); }
+    if(typeof loadAllQuotes==='function') loadAllQuotes();   // 同步后立即拉取实时行情
   }
 
   async function retry(fn,opt){
