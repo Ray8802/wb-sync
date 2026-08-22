@@ -908,9 +908,32 @@ function parseSbox(raw){
 }
 
 const MarketAPI = {
-  // 东方财富 push2 实时行情（secid 通用，覆盖 A股/港股/美股/韩国）
-  // 注意：stock/get 接口一次只接受单个 secid，必须逐只请求（批量逗号分隔会失败）
-  fetchQuotes(items, cb){
+  // ── 行情主通道：腾讯 qt.gtimg.cn（script 注入，无 CORS 限制，支持批量）──
+  _tencent(items, cb){
+    try{
+      const q=codes=>codes.map(c=>/^(6|5|9|1)/.test(c)?'sh'+c:'sz'+c).join(',');
+      const key=code=>/^(6|5|9|1)/.test(code)?'v_sh'+code:'v_sz'+code;
+      const id='_qt_'+Date.now()+Math.floor(Math.random()*1000);
+      window[id]=()=>{
+        const out={};
+        items.forEach(it=>{
+          const raw=window[key(it.code)];
+          if(!raw) return;
+          const p=String(raw).split('~');
+          out[it.secid]={ name:p[1], price:+p[3]||0, prev:+p[4]||0, open:+p[5]||0, high:+p[33]||0, low:+p[34]||0,
+            vol:+p[36]||0, amount:+p[37]||0, pe:p[39]?+p[39]:null, pb:p[46]?+p[46]:null, cap:+p[45]||0, turn:+p[38]||0 };
+        });
+        cb(out);
+      };
+      const s=document.createElement('script');
+      s.onload=()=>{ setTimeout(()=>{ try{ window[id](); }catch(e){} s.remove(); }, 150); };
+      s.onerror=()=>{ s.remove(); cb(null); };
+      s.src='https://qt.gtimg.cn/q='+q(items.map(i=>i.code))+'&_t='+Date.now();
+      document.head.appendChild(s);
+    }catch(e){ cb(null); }
+  },
+  // ── 兜底通道：东方财富 push2（逐只请求，stock/get 不支持批量）──
+  _eastmoney(items, cb){
     if(!items.length){ cb({}); return; }
     Promise.all(items.map(it=>
       fetch('https://push2.eastmoney.com/api/qt/stock/get?secid='+encodeURIComponent(it.secid)+'&fields=f43,f44,f45,f46,f47,f48,f55,f56,f57,f58,f60,f86,f116,f117,f162,f167,f168,f169,f170,f171&fltt=2&invt=2',
@@ -923,6 +946,14 @@ const MarketAPI = {
       results.forEach(r=>{ if(r&&r.q) out[r.secid]=r.q; });
       cb(out);
     }).catch(()=>cb(null));
+  },
+  // 先腾讯（快、免 CORS、批量），拿不全再东财逐只兜底
+  fetchQuotes(items, cb){
+    if(!items.length){ cb({}); return; }
+    this._tencent(items,(out)=>{
+      if(out && Object.keys(out).length>=items.length*0.8){ cb(out); return; }
+      this._eastmoney(items,cb);
+    });
   },
   async kline(secid, klt, lmt=240){
     try{
