@@ -812,9 +812,10 @@
             <span class="switch"><input type="checkbox" id="autoSync" checked><span class="sl"></span></span>
           </label>
           <label class="row-between" style="gap:8px">
-            <span class="st-sub">间隔(秒)</span>
-            <input class="inp" id="syncInterval" type="number" min="5" step="5" value="30" style="width:90px">
+            <span class="st-sub">拉取间隔(秒) 15~300</span>
+            <input class="inp" id="syncInterval" type="number" min="15" step="5" value="30" style="width:90px">
           </label>
+          <div class="st-sub">本端变更约 1.5 秒后自动上传；每隔 15~300 秒自动拉取另一端变更（Gitee 免费接口限流，最小 15 秒）</div>
         </div>
       </div>
 
@@ -1655,7 +1656,8 @@ const WBSync = (function(){
   let state='init';
   let syncLogArr=[];
   let bc=null;
-  let autoT=null;
+  let autoT=null;    // 周期轮询定时器
+  let quickT=null;   // 变更后快速推送定时器
   let syncBusy=false;   // 同步互斥锁：同一时刻只允许一个同步流程
   let suppressBroadcast=false;
 
@@ -1678,7 +1680,7 @@ const WBSync = (function(){
     recs[id]={bucket,key,value,deleted:!!deleted,ts:Date.now(),device:deviceId};
     save();
     broadcastPatch({[id]:recs[id]});
-    scheduleAuto();
+    scheduleQuick();   // 变更后约 1.5 秒快速推送云端
     if(state!=='syncing'&&state!=='offline'){ const n=pendingCount(); state = n>0?'pending':(state==='error'?'error':'idle'); }
     render();
   }
@@ -1864,10 +1866,19 @@ const WBSync = (function(){
     save(); setState('idle'); logMsg('已回滚到上次成功同步状态'); render();
   }
 
+  // 周期轮询同步：每 interval 秒自动同步一次（拉取远端变更 + 推送本地待同步）
   function scheduleAuto(){
     if(!config.autoSync) return;
     clearTimeout(autoT);
-    autoT=setTimeout(()=>{ if(online()) syncNow(false); }, Math.max(2500,(config.interval||30)*1000));
+    autoT=setTimeout(()=>{
+      if(online()) syncNow(false);
+      scheduleAuto();                                    // 递归 = 周期轮询
+    }, Math.max(15000,(config.interval||30)*1000));      // 最小 15 秒（Gitee 免费 API 限流 5000 次/天）
+  }
+  // 变更后快速推送：防抖 1.5 秒，让连续操作合并成一次同步
+  function scheduleQuick(){
+    clearTimeout(quickT);
+    quickT=setTimeout(()=>{ if(online()&&config.endpoint) syncNow(false); }, 1500);
   }
 
   function renderConflicts(){
@@ -1933,6 +1944,7 @@ const WBSync = (function(){
     if(!online()) setState('offline');
     if(config.endpoint && online()){ syncNow(false); }
     else if(!config.endpoint){ setState('nocloud'); }
+    scheduleAuto();                       // 启动周期轮询同步
     render();
   }
 
@@ -1967,7 +1979,7 @@ WBSync.init();
   $('btnRollback').onclick=()=>WBSync.rollbackToLast();
   document.querySelectorAll('#stratSeg button').forEach(b=> b.onclick=()=>WBSync.setConfig('strategy', b.dataset.strat));
   $('autoSync').onchange=e=>WBSync.setConfig('autoSync', e.target.checked);
-  $('syncInterval').onchange=e=>WBSync.setConfig('interval', Math.max(5, parseInt(e.target.value)||30));
+  $('syncInterval').onchange=e=>WBSync.setConfig('interval', Math.max(15, parseInt(e.target.value)||30));
   $('syncEndpoint').onchange=e=>WBSync.setConfig('endpoint', (e.target.value||'').trim());
   $('syncToken').onchange=e=>WBSync.setConfig('token', (e.target.value||'').trim());
   $('btnExport').onclick=()=>{
