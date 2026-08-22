@@ -1,9 +1,0 @@
-[build]
-  builder = "NIXPACKS"
-
-[deploy]
-  startCommand = "node sync-server.js"
-  healthcheckPath = "/healthz"
-
-[variables]
-  PORT = "3000"
