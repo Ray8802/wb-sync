@@ -23,7 +23,7 @@ function pathOf(env) { return env.GITEE_PATH || 'sync-db.json'; }
 // 读 Gitee 数据文件；不存在返回 null
 async function giteeGet(env) {
   const url = `${GITEE_API}/${env.GITEE_REPO}/contents/${pathOf(env)}?ref=${env.GITEE_BRANCH || 'main'}`;
-  const r = await fetch(url, { headers: { Authorization: `token ${env.GITEE_TOKEN}` } });
+  const r = await fetch(url, { headers: { Authorization: `token ${env.GITEE_TOKEN}`, 'User-Agent': 'wb-sync-pages/1.0' } });
   if (r.status === 404) return null;
   if (!r.ok) throw new Error('gitee get ' + r.status);
   const j = await r.json();
@@ -42,7 +42,7 @@ async function giteePut(env, db, sha) {
   if (sha) body.sha = sha;
   const r = await fetch(`${GITEE_API}/${env.GITEE_REPO}/contents/${pathOf(env)}`, {
     method: sha ? 'PUT' : 'POST',                        // 更新用 PUT，创建用 POST（Gitee 要求）
-    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    headers: { 'Content-Type': 'application/json', 'User-Agent': 'wb-sync-pages/1.0' }, body: JSON.stringify(body)
   });
   const j = await r.json().catch(() => ({}));
   if (j.content && j.content.sha) return j.content.sha;
