@@ -702,52 +702,6 @@
           <div class="legend" id="donutLegend"></div>
         </div>
       </div>
-
-      <!-- Quick trade -->
-      <div class="card">
-        <div class="card-head">
-          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
-          <h2>快捷交易</h2>
-        </div>
-        <div class="trade-body">
-          <div class="trade-stock">
-            <div>
-              <div class="ts-name" id="tName">—</div>
-              <div class="sr-code" id="tCode">—</div>
-            </div>
-            <div class="ts-price num" id="tPrice">—</div>
-          </div>
-          <div class="side-toggle">
-            <button class="side-btn buy active" data-side="buy">买入</button>
-            <button class="side-btn sell" data-side="sell">卖出</button>
-          </div>
-          <div class="field">
-            <div class="field-label"><span>委托价格</span><span id="tLimit">限价</span></div>
-            <div class="field-input">
-              <input class="num" id="tPriceInput" type="number" step="0.01" />
-              <span class="unit">元</span>
-            </div>
-          </div>
-          <div class="field">
-            <div class="field-label"><span>委托数量</span><span id="tAvail">可买 — 股</span></div>
-            <div class="field-input">
-              <input class="num" id="tQtyInput" type="number" step="100" />
-              <span class="unit">股</span>
-            </div>
-            <div class="qty-presets">
-              <button data-q="100">100</button>
-              <button data-q="500">500</button>
-              <button data-q="1000">1000</button>
-              <button data-q="max">全仓</button>
-            </div>
-          </div>
-          <div class="trade-info">
-            <div class="row"><span>预计金额</span><b id="tAmount">0.00 元</b></div>
-            <div class="row"><span>手续费 (约)</span><b id="tFee">0.00 元</b></div>
-          </div>
-          <button class="submit-btn" id="tSubmit">买入</button>
-        </div>
-      </div>
     </section>
   </div>
 </div>
@@ -1165,7 +1119,6 @@ let dataMode = 'live';            // live | mock
 let chartMode = 'kline';          // kline | trend
 let klinePeriod = 'day';         // day | week | month
 let trendDays = 1;                // 1 | 5
-let tradeSide = 'buy';
 
 /* =========================================================
    渲染 — 自选股列表
@@ -1375,19 +1328,7 @@ function renderAssets(){
   svg.innerHTML=html;
   $('donutLegend').innerHTML=items.map((it,i)=>`<div class="legend-item"><span class="dot" style="background:${colors[i%colors.length]}"></span><span class="nm">${it.name}</span><span class="pc">${(it.value/sum*100).toFixed(1)}%</span></div>`).join('');
 }
-function renderTrade(){
-  const s=current;
-  if(!s){ $('tName').textContent='—'; $('tCode').textContent='—'; $('tPrice').textContent='—'; return; }
-  $('tName').textContent=s.name; $('tCode').textContent=s.code; $('tPrice').textContent=fmt(s.price,2);
-  const pi=$('tPriceInput'); if(document.activeElement!==pi) pi.value=s.price.toFixed(2);
-  updateTradeCalc();
-}
-function updateTradeCalc(){
-  const price=parseFloat($('tPriceInput').value)||0; const qty=parseInt($('tQtyInput').value)||0;
-  const amount=price*qty; const fee=Math.max(0.01,amount*0.00025);
-  $('tAmount').textContent=fmt(amount,2)+' 元'; $('tFee').textContent=fmt(fee,2)+' 元';
-  $('tAvail').textContent = tradeSide==='buy' ? '可买 '+Math.floor(128450/(price*100||1)*100)+' 股' : '可卖 '+current.held+' 股';
-}
+function renderTrade(){}   // 已移除快捷交易，保留空桩避免调用报错
 
 /* =========================================================
    选择 / 加载实时数据
@@ -1531,14 +1472,6 @@ document.querySelectorAll('.chart-tab').forEach(t=>{
   };
 });
 document.querySelectorAll('.trend-sub .ts').forEach(b=>{ b.onclick=()=>{ document.querySelectorAll('.trend-sub .ts').forEach(x=>x.classList.remove('active')); b.classList.add('active'); trendDays=+b.dataset.tdays; if(chartMode==='trend') renderChart(); }; });
-
-document.querySelectorAll('.side-btn').forEach(b=>{
-  b.onclick=()=>{ document.querySelectorAll('.side-btn').forEach(x=>x.classList.remove('active')); b.classList.add('active'); tradeSide=b.dataset.side; const sb=$('tSubmit'); sb.textContent=tradeSide==='buy'?'买入':'卖出'; sb.className='submit-btn '+(tradeSide==='buy'?'':'sell'); updateTradeCalc(); };
-});
-$('tPriceInput').addEventListener('input',updateTradeCalc);
-$('tQtyInput').addEventListener('input',updateTradeCalc);
-document.querySelectorAll('.qty-presets button').forEach(b=>{ b.onclick=()=>{ const price=parseFloat($('tPriceInput').value)||current.price; if(b.dataset.q==='max'){ const q=tradeSide==='buy'?Math.floor(128450/(price*100))*100:current.held; $('tQtyInput').value=q; } else $('tQtyInput').value=b.dataset.q; updateTradeCalc(); }; });
-$('tSubmit').onclick=()=>{ const qty=parseInt($('tQtyInput').value)||0; const price=parseFloat($('tPriceInput').value)||0; if(qty<=0||price<=0){ showToast('请输入有效的委托价格与数量'); return; } showToast(`${tradeSide==='buy'?'买入':'卖出'} ${current.name} ${qty}股 @ ${fmt(price,2)} 委托已提交`); };
 
 // 数据源切换
 (function(){
