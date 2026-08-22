@@ -1373,7 +1373,7 @@ function selectStock(s){
   if(dataMode==='live') loadQuoteFor(s);
 }
 function loadQuoteFor(s){
-  MarketAPI.fetchQuotes([{secid:s.secid||secidOf(s.code),ref:s}],(out)=>{
+  MarketAPI.fetchQuotes([{secid:s.secid||secidOf(s.code),code:s.code,ref:s}],(out)=>{
     const q=out&&out[s.secid||secidOf(s.code)];
     if(q){ fillStockFromQuote(s,q); renderWatchlist(document.querySelector('.watch-tab.active').dataset.grp); renderDetailHeader(s); renderTrade(); renderAssets(); }
     setLive('ok');
@@ -1381,7 +1381,7 @@ function loadQuoteFor(s){
 }
 function loadAllQuotes(){
   if(dataMode!=='live') return;
-  const items=STOCKS.map(s=>({secid:s.secid||secidOf(s.code),ref:s}));
+  const items=STOCKS.map(s=>({secid:s.secid||secidOf(s.code),code:s.code,ref:s}));
   if(current && !STOCKS.includes(current)) items.push({secid:current.secid||secidOf(current.code),ref:current});
   MarketAPI.fetchQuotes(items,(out)=>{
     if(!out){ setLive('fail'); return; }
@@ -1562,7 +1562,7 @@ setupAC($('searchInput'), $('searchDrop'), (it)=>{
 // 新增栏联想（独立下拉 #addDrop，避免覆盖表单）
 setupAC($('addName'), $('addDrop'), (it)=>{
   $('addCode').value=it.code; $('addName').value=it.name;
-  if(dataMode==='live'){ MarketAPI.fetchQuotes([{secid:it.secid||secidOf(it.code)}],(out)=>{ const k=it.secid||secidOf(it.code); const q=out&&out[k]; if(q) $('addPrice').value=q.price.toFixed(2); }); }
+  if(dataMode==='live'){ MarketAPI.fetchQuotes([{secid:it.secid||secidOf(it.code),code:it.code}],(out)=>{ const k=it.secid||secidOf(it.code); const q=out&&out[k]; if(q) $('addPrice').value=q.price.toFixed(2); }); }
   else $('addPrice').value='';
 }, null);
 // 新增栏的 ＋自选 由 setupAC 内部 quickAdd 处理（仅搜索栏显示）；新增栏选择即填充，点添加才入池
