@@ -909,19 +909,20 @@ function parseSbox(raw){
 
 const MarketAPI = {
   // 东方财富 push2 实时行情（secid 通用，覆盖 A股/港股/美股/韩国）
+  // 注意：stock/get 接口一次只接受单个 secid，必须逐只请求（批量逗号分隔会失败）
   fetchQuotes(items, cb){
     if(!items.length){ cb({}); return; }
-    const secids = items.map(i=>i.secid);
-    fetch('https://push2.eastmoney.com/api/qt/stock/get?secid='+encodeURIComponent(secids.join(','))+'&fields=f43,f44,f45,f46,f47,f48,f55,f56,f57,f58,f60,f86,f116,f117,f162,f167,f168,f169,f170,f171&fltt=2&invt=2',
-      {headers:{'Referer':'https://quote.eastmoney.com/'}})
-      .then(r=>r.json())
-      .then(d=>{
-        const arr = (d&&d.data) ? (Array.isArray(d.data)?d.data:[d.data]) : [];
-        const out={};
-        items.forEach((it,i)=>{ const q=parseEM(arr[i]); if(q) out[it.secid]=q; });
-        cb(out);
-      })
-      .catch(()=>cb(null));
+    Promise.all(items.map(it=>
+      fetch('https://push2.eastmoney.com/api/qt/stock/get?secid='+encodeURIComponent(it.secid)+'&fields=f43,f44,f45,f46,f47,f48,f55,f56,f57,f58,f60,f86,f116,f117,f162,f167,f168,f169,f170,f171&fltt=2&invt=2',
+        {headers:{'Referer':'https://quote.eastmoney.com/'}})
+        .then(r=>r.json())
+        .then(d=>{ const q=d&&d.data?parseEM(d.data):null; return q?{secid:it.secid,q}:null; })
+        .catch(()=>null)
+    )).then(results=>{
+      const out={};
+      results.forEach(r=>{ if(r&&r.q) out[r.secid]=r.q; });
+      cb(out);
+    }).catch(()=>cb(null));
   },
   async kline(secid, klt, lmt=240){
     try{
