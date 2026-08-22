@@ -908,28 +908,27 @@ function parseSbox(raw){
 }
 
 const MarketAPI = {
-  // ── 行情主通道：腾讯 qt.gtimg.cn（script 注入，无 CORS 限制，支持批量）──
+  // ── 行情主通道：腾讯 qt.gtimg.cn（fetch + GBK 解码，支持批量，页内实测可用）──
   _tencent(items, cb){
     try{
-      const q=codes=>codes.map(c=>/^(6|5|9|1)/.test(c)?'sh'+c:'sz'+c).join(',');
-      const key=code=>/^(6|5|9|1)/.test(code)?'v_sh'+code:'v_sz'+code;
-      const id='_qt_'+Date.now()+Math.floor(Math.random()*1000);
-      window[id]=()=>{
-        const out={};
-        items.forEach(it=>{
-          const raw=window[key(it.code)];
-          if(!raw) return;
-          const p=String(raw).split('~');
-          out[it.secid]={ name:p[1], price:+p[3]||0, prev:+p[4]||0, open:+p[5]||0, high:+p[33]||0, low:+p[34]||0,
-            vol:+p[36]||0, amount:+p[37]||0, pe:p[39]?+p[39]:null, pb:p[46]?+p[46]:null, cap:+p[45]||0, turn:+p[38]||0 };
-        });
-        cb(out);
-      };
-      const s=document.createElement('script');
-      s.onload=()=>{ setTimeout(()=>{ try{ window[id](); }catch(e){} s.remove(); }, 150); };
-      s.onerror=()=>{ s.remove(); cb(null); };
-      s.src='https://qt.gtimg.cn/q='+q(items.map(i=>i.code))+'&_t='+Date.now();
-      document.head.appendChild(s);
+      const pref=code=>/^(6|5|9|1)/.test(code)?'sh':'sz';
+      const q=items.map(i=>pref(i.code)+i.code).join(',');
+      fetch('https://qt.gtimg.cn/q='+q+'&_t='+Date.now(),{signal:AbortSignal.timeout(10000)})
+        .then(r=>r.arrayBuffer())
+        .then(buf=>{
+          const text=new TextDecoder('gbk').decode(buf);
+          const out={};
+          items.forEach(it=>{
+            const m=text.match(new RegExp('v_'+pref(it.code)+it.code+'=\\\"([^\\\"]*)\\\"'));
+            if(m){
+              const p=m[1].split('~');
+              out[it.secid]={ name:p[1], price:+p[3]||0, prev:+p[4]||0, open:+p[5]||0, high:+p[33]||0, low:+p[34]||0,
+                vol:+p[36]||0, amount:+p[37]||0, pe:p[39]?+p[39]:null, pb:p[46]?+p[46]:null, cap:+p[45]||0, turn:+p[38]||0 };
+            }
+          });
+          cb(out);
+        })
+        .catch(()=>cb(null));
     }catch(e){ cb(null); }
   },
   // ── 兜底通道：东方财富 push2（逐只请求，stock/get 不支持批量）──
@@ -947,7 +946,7 @@ const MarketAPI = {
       cb(out);
     }).catch(()=>cb(null));
   },
-  // 先腾讯（快、免 CORS、批量），拿不全再东财逐只兜底
+  // 先腾讯（快、批量），拿不全再东财逐只兜底
   fetchQuotes(items, cb){
     if(!items.length){ cb({}); return; }
     this._tencent(items,(out)=>{
