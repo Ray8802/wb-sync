@@ -1659,6 +1659,7 @@ const WBSync = (function(){
   let autoT=null;    // 周期轮询定时器
   let quickT=null;   // 变更后快速推送定时器
   let syncBusy=false;   // 同步互斥锁：同一时刻只允许一个同步流程
+  let syncStart=0;      // 同步开始时间（用于锁超时兜底）
   let suppressBroadcast=false;
 
   function loadDev(){ let d=lsGet('wb_dev_id',null); if(!d){ d='dev-'+Math.random().toString(36).slice(2,10)+Date.now().toString(36); lsSet('wb_dev_id',d); } return d; }
@@ -1681,6 +1682,7 @@ const WBSync = (function(){
     save();
     broadcastPatch({[id]:recs[id]});
     scheduleQuick();   // 变更后约 1.5 秒快速推送云端
+    if(!config.endpoint) logMsg('已保存到本机，但未配置云端端点，变更不会同步到其他设备');
     if(state!=='syncing'&&state!=='offline'){ const n=pendingCount(); state = n>0?'pending':(state==='error'?'error':'idle'); }
     render();
   }
@@ -1729,7 +1731,11 @@ const WBSync = (function(){
     let lastErr;
     for(let i=0;i<max;i++){
       try{ return await fn(); }
-      catch(e){ lastErr=e; const wait=Math.min(base*Math.pow(factor,i),8000)*(0.7+Math.random()*0.6); await new Promise(r=>setTimeout(r,wait)); }
+      catch(e){
+        lastErr=e;
+        if(e && e.name==='TimeoutError') throw e;      // 超时立即失败，不重试（避免锁被拖死）
+        const wait=Math.min(base*Math.pow(factor,i),8000)*(0.7+Math.random()*0.6); await new Promise(r=>setTimeout(r,wait));
+      }
     }
     throw lastErr;
   }
@@ -1745,12 +1751,12 @@ const WBSync = (function(){
     return h;
   }
   async function cloudPull(since){
-    const r=await fetch(syncUrl()+(since?('?since='+since):''),{cache:'no-store',headers:syncHeaders()});
+    const r=await fetch(syncUrl()+(since?('?since='+since):''),{cache:'no-store',headers:syncHeaders(),signal:AbortSignal.timeout(15000)});
     if(!r.ok) throw new Error('拉取失败 '+r.status);
     return await r.json();
   }
   async function cloudPush(baseVer,patch){
-    const r=await fetch(syncUrl(),{method:'POST',headers:syncHeaders(),body:JSON.stringify({base:baseVer,patch})});
+    const r=await fetch(syncUrl(),{method:'POST',headers:syncHeaders(),body:JSON.stringify({base:baseVer,patch}),signal:AbortSignal.timeout(15000)});
     if(r.status===409) return {conflict:true,data:await r.json()};
     if(!r.ok) throw new Error('推送失败 '+r.status);
     return {data:await r.json()};
@@ -1782,8 +1788,11 @@ const WBSync = (function(){
   async function syncNow(manual){
     if(!config.endpoint){ logMsg('未配置云端端点：可用「同步包」或同浏览器多标签页实时同步'); setState('nocloud'); return; }
     if(!online()){ logMsg('离线：变更已入队，联网后自动合并'); setState('offline'); return; }
-    if(syncBusy){ logMsg('上一次同步尚未结束，将自动重试'); return; }
-    syncBusy=true;
+    if(syncBusy){
+      if(Date.now()-syncStart>30000){ syncBusy=false; logMsg('检测到上次同步卡死(>30s)，已强制解锁，重新同步'); }
+      else { logMsg('上一次同步尚未结束，将自动重试'); render(); return; }
+    }
+    syncBusy=true; syncStart=Date.now();
     setState('syncing');
     const snapshot=snap();
     if(!meta.lastGood) meta.lastGood=snapshot;
@@ -1980,8 +1989,11 @@ WBSync.init();
   document.querySelectorAll('#stratSeg button').forEach(b=> b.onclick=()=>WBSync.setConfig('strategy', b.dataset.strat));
   $('autoSync').onchange=e=>WBSync.setConfig('autoSync', e.target.checked);
   $('syncInterval').onchange=e=>WBSync.setConfig('interval', Math.max(15, parseInt(e.target.value)||30));
-  $('syncEndpoint').onchange=e=>WBSync.setConfig('endpoint', (e.target.value||'').trim());
-  $('syncToken').onchange=e=>WBSync.setConfig('token', (e.target.value||'').trim());
+  // 端点/令牌：input(输入即保存) + change(失焦兜底) 双绑定，避免"填了没保存"
+  ['input','change'].forEach(ev=>{
+    $('syncEndpoint').addEventListener(ev,e=>WBSync.setConfig('endpoint',(e.target.value||'').trim()));
+    $('syncToken').addEventListener(ev,e=>WBSync.setConfig('token',(e.target.value||'').trim()));
+  });
   $('btnExport').onclick=()=>{
     const {json,b64}=WBSync.exportPackage();
     $('pkgOut').value=b64; $('pkgSection').hidden=false;
