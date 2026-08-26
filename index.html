@@ -1524,6 +1524,7 @@ document.querySelectorAll('.watch-tab').forEach(t=>{ t.onclick=()=>{ document.qu
 
 // ===== 财经资讯 =====
 let newsTimer=null;
+const escNews=s=>String(s==null?'':s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
 function showNews(){
   $('watchList').hidden=true;
   const nl=$('newsList'); nl.hidden=false;
@@ -1540,8 +1541,8 @@ function loadNews(silent){
       if(!j.ok||!j.items) throw new Error(j.error||'数据为空');
       empty.hidden=true;
       box.innerHTML=j.items.map(n=>`<div class="news-item" onclick="this.classList.toggle('open')">
-        <div class="news-meta"><span class="news-tag">${esc(n.tag||'快讯')}</span><span>${esc(n.date||'')} ${esc(n.time||'')}</span>${n.url?`<a class="news-link" href="${esc(n.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">原文 ↗</a>`:''}</div>
-        <div class="news-text">${esc(n.text)}</div></div>`).join('');
+        <div class="news-meta"><span class="news-tag">${escNews(n.tag||'快讯')}</span><span>${escNews(n.date||'')} ${escNews(n.time||'')}</span>${n.url?`<a class="news-link" href="${escNews(n.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">原文 ↗</a>`:''}</div>
+        <div class="news-text">${escNews(n.text)}</div></div>`).join('');
     })
     .catch(e=>{
       if(!silent){ empty.textContent='资讯加载失败：'+e.message; empty.hidden=false; }
