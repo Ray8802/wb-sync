@@ -182,10 +182,11 @@
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
   .news-refresh { border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); border-radius: 8px; font-size: 11px; padding: 4px 10px; cursor: pointer; transition: .15s; }
   .news-refresh:hover { border-color: var(--accent); color: var(--accent); }
-  .news-srcs { display: flex; gap: 6px; padding: 0 6px 8px; }
-  .news-src-tab { flex: 1; text-align: center; font-size: 11px; font-weight: 600; color: var(--text-2); padding: 5px 0; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; transition: .15s; background: var(--surface-2); }
-  .news-src-tab:hover { border-color: var(--accent); }
-  .news-src-tab.active { background: var(--accent-soft); color: var(--accent); border-color: #dbe1ff; }
+  .news-stats { font-size: 11px; color: var(--text-3); padding: 0 6px 8px; }
+  .news-hot { color: #e5484d; }
+  .news-fire { font-size: 12px; }
+  .news-multi { background: #fff3e0; color: #e65100; border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 600; }
+  .news-srcmark { margin-left: auto; color: var(--text-3); font-size: 10px; }
   .news-item { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px; cursor: pointer; transition: .15s; background: var(--card); }
   .news-item:hover { border-color: var(--accent); box-shadow: 0 2px 8px rgba(59,91,253,.08); }
   .news-meta { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; font-size: 11px; color: var(--text-3); }
@@ -644,13 +645,8 @@
         <div class="watch-scroll" id="watchList"></div>
         <div class="watch-scroll" id="newsList" hidden>
           <div class="news-head">
-            <span class="news-src">财经快讯 · 7×24 <span class="news-live">●</span></span>
+            <span class="news-src">财经快讯 · 三源聚合 <span class="news-live">●</span></span>
             <button class="news-refresh" id="newsRefresh">↻ 刷新</button>
-          </div>
-          <div class="news-srcs">
-            <span class="news-src-tab active" data-src="em">东方财富</span>
-            <span class="news-src-tab" data-src="jin10">金十数据</span>
-            <span class="news-src-tab" data-src="sina">新浪</span>
           </div>
           <div id="newsItems"></div>
           <div class="news-empty" id="newsEmpty">加载中…</div>
@@ -1531,9 +1527,10 @@ function makeStockFromIndex(it){
    ========================================================= */
 document.querySelectorAll('.watch-tab').forEach(t=>{ t.onclick=()=>{ document.querySelectorAll('.watch-tab').forEach(x=>x.classList.remove('active')); t.classList.add('active'); renderWatchlist(t.dataset.grp); }; });
 
-// ===== 财经资讯 =====
-let newsTimer=null, newsSrc='em';
+// ===== 财经资讯（三源聚合 + 重大优先） =====
+let newsTimer=null;
 const escNews=s=>String(s==null?'':s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
+const SRC_NAME={em:'东财',jin10:'金十',sina:'新浪'};
 function showNews(){
   $('watchList').hidden=true;
   const nl=$('newsList'); nl.hidden=false;
@@ -1544,26 +1541,27 @@ function showNews(){
 function loadNews(silent){
   const box=$('newsItems'); const empty=$('newsEmpty');
   if(!silent){ empty.textContent='加载中…'; empty.hidden=false; box.innerHTML=''; }
-  fetch('/api/news?src='+newsSrc,{signal:AbortSignal.timeout(15000)})
+  fetch('/api/news',{signal:AbortSignal.timeout(20000)})
     .then(r=>r.json())
     .then(j=>{
       if(!j.ok||!j.items) throw new Error(j.error||'数据为空');
       empty.hidden=true;
-      box.innerHTML=j.items.map(n=>`<div class="news-item" onclick="this.classList.toggle('open')">
-        <div class="news-meta"><span class="news-tag">${escNews(n.tag||'快讯')}</span><span>${escNews(n.date||'')} ${escNews(n.time||'')}</span>${n.url?`<a class="news-link" href="${escNews(n.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">原文 ↗</a>`:''}</div>
-        <div class="news-text">${escNews(n.text)}</div></div>`).join('');
+      const hot=j.items.filter(x=>x.score>=3).length;
+      box.innerHTML=`<div class="news-stats">共 ${j.items.length} 条 · 三源综合（东财${j.stats?.em||0} / 金十${j.stats?.jin10||0} / 新浪${j.stats?.sina||0}）· <b class="news-hot">🔥 重大 ${hot} 条</b></div>`+
+      j.items.map(n=>{
+        const srcs=n.src.split('+').map(s=>SRC_NAME[s]||s).join(' / ');
+        const fire=n.score>=3?'<span class="news-fire">🔥</span>':'';
+        const multi=n.n>=2?'<span class="news-multi">多源</span>':'';
+        return `<div class="news-item" onclick="this.classList.toggle('open')">
+        <div class="news-meta"><span class="news-tag">${escNews(n.tag||'快讯')}</span><span>${escNews(n.date||'')} ${escNews(n.time||'')}</span>${multi}${fire}<span class="news-srcmark">${escNews(srcs)}</span>${n.url?`<a class="news-link" href="${escNews(n.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">原文 ↗</a>`:''}</div>
+        <div class="news-text">${escNews(n.text)}</div></div>`;
+      }).join('');
     })
     .catch(e=>{
       if(!silent){ empty.textContent='资讯加载失败：'+e.message; empty.hidden=false; }
     });
 }
 $('newsRefresh')&&($('newsRefresh').onclick=()=>loadNews(false));
-document.querySelectorAll('.news-src-tab').forEach(t=>{
-  t.onclick=()=>{
-    document.querySelectorAll('.news-src-tab').forEach(x=>x.classList.remove('active'));
-    t.classList.add('active'); newsSrc=t.dataset.src; loadNews(false);
-  };
-});
 
 document.querySelectorAll('.chart-tab').forEach(t=>{
   t.onclick=()=>{
