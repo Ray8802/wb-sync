@@ -182,6 +182,10 @@
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
   .news-refresh { border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); border-radius: 8px; font-size: 11px; padding: 4px 10px; cursor: pointer; transition: .15s; }
   .news-refresh:hover { border-color: var(--accent); color: var(--accent); }
+  .news-srcs { display: flex; gap: 6px; padding: 0 6px 8px; }
+  .news-src-tab { flex: 1; text-align: center; font-size: 11px; font-weight: 600; color: var(--text-2); padding: 5px 0; border-radius: 8px; border: 1px solid var(--border); cursor: pointer; transition: .15s; background: var(--surface-2); }
+  .news-src-tab:hover { border-color: var(--accent); }
+  .news-src-tab.active { background: var(--accent-soft); color: var(--accent); border-color: #dbe1ff; }
   .news-item { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px; cursor: pointer; transition: .15s; background: var(--card); }
   .news-item:hover { border-color: var(--accent); box-shadow: 0 2px 8px rgba(59,91,253,.08); }
   .news-meta { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; font-size: 11px; color: var(--text-3); }
@@ -642,6 +646,11 @@
           <div class="news-head">
             <span class="news-src">财经快讯 · 7×24 <span class="news-live">●</span></span>
             <button class="news-refresh" id="newsRefresh">↻ 刷新</button>
+          </div>
+          <div class="news-srcs">
+            <span class="news-src-tab active" data-src="em">东方财富</span>
+            <span class="news-src-tab" data-src="jin10">金十数据</span>
+            <span class="news-src-tab" data-src="sina">新浪</span>
           </div>
           <div id="newsItems"></div>
           <div class="news-empty" id="newsEmpty">加载中…</div>
@@ -1523,7 +1532,7 @@ function makeStockFromIndex(it){
 document.querySelectorAll('.watch-tab').forEach(t=>{ t.onclick=()=>{ document.querySelectorAll('.watch-tab').forEach(x=>x.classList.remove('active')); t.classList.add('active'); renderWatchlist(t.dataset.grp); }; });
 
 // ===== 财经资讯 =====
-let newsTimer=null;
+let newsTimer=null, newsSrc='em';
 const escNews=s=>String(s==null?'':s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
 function showNews(){
   $('watchList').hidden=true;
@@ -1535,7 +1544,7 @@ function showNews(){
 function loadNews(silent){
   const box=$('newsItems'); const empty=$('newsEmpty');
   if(!silent){ empty.textContent='加载中…'; empty.hidden=false; box.innerHTML=''; }
-  fetch('/api/news',{signal:AbortSignal.timeout(15000)})
+  fetch('/api/news?src='+newsSrc,{signal:AbortSignal.timeout(15000)})
     .then(r=>r.json())
     .then(j=>{
       if(!j.ok||!j.items) throw new Error(j.error||'数据为空');
@@ -1549,6 +1558,12 @@ function loadNews(silent){
     });
 }
 $('newsRefresh')&&($('newsRefresh').onclick=()=>loadNews(false));
+document.querySelectorAll('.news-src-tab').forEach(t=>{
+  t.onclick=()=>{
+    document.querySelectorAll('.news-src-tab').forEach(x=>x.classList.remove('active'));
+    t.classList.add('active'); newsSrc=t.dataset.src; loadNews(false);
+  };
+});
 
 document.querySelectorAll('.chart-tab').forEach(t=>{
   t.onclick=()=>{
