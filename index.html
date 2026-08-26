@@ -175,6 +175,22 @@
   .watch-tab:hover { background: var(--surface-3); }
   .watch-tab.active { background: var(--accent-soft); color: var(--accent); border-color: #dbe1ff; }
 
+  /* ============ 财经资讯 ============ */
+  .news-head { display: flex; justify-content: space-between; align-items: center; padding: 2px 6px 8px; }
+  .news-src { font-size: 12px; color: var(--text-3); display: flex; align-items: center; gap: 6px; }
+  .news-live { color: #e5484d; font-size: 9px; animation: pulse 1.6s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.25} }
+  .news-refresh { border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); border-radius: 8px; font-size: 11px; padding: 4px 10px; cursor: pointer; transition: .15s; }
+  .news-refresh:hover { border-color: var(--accent); color: var(--accent); }
+  .news-item { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px; cursor: pointer; transition: .15s; background: var(--card); }
+  .news-item:hover { border-color: var(--accent); box-shadow: 0 2px 8px rgba(59,91,253,.08); }
+  .news-meta { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; font-size: 11px; color: var(--text-3); }
+  .news-tag { background: var(--accent-soft); color: var(--accent); border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 600; }
+  .news-text { font-size: 13px; color: var(--text); line-height: 1.65; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .news-item.open .news-text { -webkit-line-clamp: unset; }
+  .news-empty { color: var(--text-3); font-size: 13px; text-align: center; padding: 30px 0; }
+  .news-link { margin-left: auto; color: var(--accent); font-size: 11px; }
+
   .watch-scroll { max-height: calc(100vh - 320px); overflow-y: auto; padding: 6px; }
   .watch-scroll::-webkit-scrollbar { width: 6px; }
   .watch-scroll::-webkit-scrollbar-thumb { background: #dfe3ea; border-radius: 3px; }
@@ -619,8 +635,17 @@
           <div class="watch-tab active" data-grp="all">全部</div>
           <div class="watch-tab" data-grp="up">涨幅榜</div>
           <div class="watch-tab" data-grp="hold">持仓</div>
+          <div class="watch-tab" data-grp="news" style="margin-left:auto;color:var(--accent)">📰 资讯</div>
         </div>
         <div class="watch-scroll" id="watchList"></div>
+        <div class="watch-scroll" id="newsList" hidden>
+          <div class="news-head">
+            <span class="news-src">财经快讯 · 7×24 <span class="news-live">●</span></span>
+            <button class="news-refresh" id="newsRefresh">↻ 刷新</button>
+          </div>
+          <div id="newsItems"></div>
+          <div class="news-empty" id="newsEmpty">加载中…</div>
+        </div>
       </div>
     </section>
 
@@ -1162,6 +1187,9 @@ function fillStockFromQuote(s, q){
   if(q.price!=null){ s.spark.push(q.price); if(s.spark.length>30) s.spark.shift(); }
 }
 function renderWatchlist(group='all'){
+  if(group==='news') return showNews();
+  if($('newsList')) $('newsList').hidden=true;
+  if($('watchList')) $('watchList').hidden=false;
   const list=$('watchList');
   let arr=[...STOCKS];
   if(group==='up') arr.sort((a,b)=>b.price/b.prev - a.price/a.prev);
@@ -1493,6 +1521,33 @@ function makeStockFromIndex(it){
    交互绑定
    ========================================================= */
 document.querySelectorAll('.watch-tab').forEach(t=>{ t.onclick=()=>{ document.querySelectorAll('.watch-tab').forEach(x=>x.classList.remove('active')); t.classList.add('active'); renderWatchlist(t.dataset.grp); }; });
+
+// ===== 财经资讯 =====
+let newsTimer=null;
+function showNews(){
+  $('watchList').hidden=true;
+  const nl=$('newsList'); nl.hidden=false;
+  loadNews(false);
+  clearInterval(newsTimer);
+  newsTimer=setInterval(()=>loadNews(true), 300000);   // 5 分钟自动刷新
+}
+function loadNews(silent){
+  const box=$('newsItems'); const empty=$('newsEmpty');
+  if(!silent){ empty.textContent='加载中…'; empty.hidden=false; box.innerHTML=''; }
+  fetch('/api/news',{signal:AbortSignal.timeout(15000)})
+    .then(r=>r.json())
+    .then(j=>{
+      if(!j.ok||!j.items) throw new Error(j.error||'数据为空');
+      empty.hidden=true;
+      box.innerHTML=j.items.map(n=>`<div class="news-item" onclick="this.classList.toggle('open')">
+        <div class="news-meta"><span class="news-tag">${esc(n.tag||'快讯')}</span><span>${esc(n.date||'')} ${esc(n.time||'')}</span>${n.url?`<a class="news-link" href="${esc(n.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">原文 ↗</a>`:''}</div>
+        <div class="news-text">${esc(n.text)}</div></div>`).join('');
+    })
+    .catch(e=>{
+      if(!silent){ empty.textContent='资讯加载失败：'+e.message; empty.hidden=false; }
+    });
+}
+$('newsRefresh')&&($('newsRefresh').onclick=()=>loadNews(false));
 
 document.querySelectorAll('.chart-tab').forEach(t=>{
   t.onclick=()=>{
