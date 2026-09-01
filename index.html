@@ -884,6 +884,15 @@ function secidOf(code){
   if(/^(00|30|20|3|4|8)/.test(code)) return '0.'+code;
   return code;
 }
+function txCodeOfSecid(secid){
+  // 把东方财富 secid 转成腾讯代码前缀（sh/sz/hk），用于腾讯 fqkline / minute
+  if(!secid || typeof secid!=='string' || secid.indexOf('.')<0) return null;
+  const i=secid.indexOf('.'), m=secid.slice(0,i), c=secid.slice(i+1);
+  if(m==='1') return 'sh'+c;    // 沪A
+  if(m==='0') return 'sz'+c;    // 深A
+  if(m==='116') return 'hk'+c;  // 港股
+  return null;                  // 韩股/美股等腾讯无，走东财兜底
+}
 
 // 解析东方财富 push2 stock/get（fltt=2 已返回可读数值，secid 通用覆盖 A股/港股/美股/韩国）
 function parseEM(x){
@@ -1004,19 +1013,54 @@ const MarketAPI = {
     });
   },
   async kline(secid, klt, lmt=240){
+    const period = klt===101?'day':klt===102?'week':'month';
+    const tx = txCodeOfSecid(secid);
+    if(tx){
+      try{
+        const r=await fetch(`https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${tx},${period},,${lmt},qfq`,{signal:AbortSignal.timeout(12000)});
+        const d=await r.json();
+        const node = d&&d.data&&(d.data[tx]||d.data[Object.keys(d.data||{})[0]]);
+        let arr = node && (node[period] || node['qfq'+period]);
+        if(!arr && node){ for(const k in node){ if(k.indexOf(period)>=0 && Array.isArray(node[k])){ arr=node[k]; break; } } }
+        if(arr && arr.length) return arr.map(x=>({
+          date:new Date(String(x[0]).replace(/-/g,'/')), open:+x[1], close:+x[2], high:+x[3], low:+x[4], vol:+x[5]
+        }));
+      }catch(e){}
+    }
+    // 兜底：东财 kline/get（韩股/美股等腾讯无的市场）
     try{
-      const r=await fetch(`https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5&fields2=f51,f52,f53,f54,f55,f56,f57,f58&klt=${klt}&fqt=0&end=20500101&lmt=${lmt}`,{headers:{'Referer':'https://quote.eastmoney.com/'}});
+      const r=await fetch(`https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&fields1=f1,f2,f3,f4,f5&fields2=f51,f52,f53,f54,f55,f56,f57,f58&klt=${klt}&fqt=0&end=20500101&lmt=${lmt}`,{headers:{'Referer':'https://quote.eastmoney.com/'},signal:AbortSignal.timeout(10000)});
       const d=await r.json();
       if(d&&d.data&&d.data.klines) return d.data.klines.map(str=>{
         const p=str.split(',');
-        return { date:new Date(p[0]), open:+p[1], close:+p[2], high:+p[3], low:+p[4], vol:+p[5] };
+        return { date:new Date(p[0].replace(/-/g,'/')), open:+p[1], close:+p[2], high:+p[3], low:+p[4], vol:+p[5] };
       });
     }catch(e){}
     return null;
   },
   async trends(secid, ndays){
+    // 单日分时：腾讯 minute（A股/港股，CORS 友好）
+    if(ndays===1){
+      const tx = txCodeOfSecid(secid);
+      if(tx){
+        try{
+          const r=await fetch(`https://web.ifzq.gtimg.cn/appstock/app/minute/query?code=${tx}`,{signal:AbortSignal.timeout(12000)});
+          const d=await r.json();
+          const node = d&&d.data&&(d.data[tx]||d.data[Object.keys(d.data||{})[0]]);
+          const arr = node&&node.data&&node.data.data;
+          if(arr && arr.length){
+            const raw=[];
+            arr.forEach(x=>{ const p=String(x).split(/\s+/); const price=+p[1]; if(!isNaN(price)) raw.push({ptime:p[0], price, vol:+p[2]||0, amt:+p[3]||0}); });
+            let cumV=0, cumA=0;
+            const out=raw.map(o=>{ cumV+=o.vol; cumA+=o.amt; return { t:(node.date||'')+' '+o.ptime, price:o.price, avg: cumV? cumA/(cumV*100): o.price }; });
+            if(out.length) return out;
+          }
+        }catch(e){}
+      }
+    }
+    // 5日分时 / 韩股单日：东财 trends2（CORS 可用）
     try{
-      const r=await fetch(`https://push2his.eastmoney.com/api/qt/stock/trends2/get?secid=${secid}&fields1=f1,f2,f3,f7&fields2=f51,f52,f53,f54,f55,f56,f57,f58&iscr=0&ndays=${ndays}`,{headers:{'Referer':'https://quote.eastmoney.com/'}});
+      const r=await fetch(`https://push2his.eastmoney.com/api/qt/stock/trends2/get?secid=${secid}&fields1=f1,f2,f3,f7&fields2=f51,f52,f53,f54,f55,f56,f57,f58&iscr=0&ndays=${ndays}`,{headers:{'Referer':'https://quote.eastmoney.com/'},signal:AbortSignal.timeout(10000)});
       const d=await r.json();
       if(d&&d.data&&d.data.trends) return d.data.trends.map(str=>{
         const p=str.split(',');
