@@ -70,7 +70,7 @@
   .topbar {
     position: sticky; top: 0; z-index: 40;
     display: flex; align-items: center; gap: var(--space-4);
-    padding: 0 var(--space-6);
+    padding: 0 var(--space-4);
     height: 60px;
     background: rgba(255,255,255,.82);
     backdrop-filter: saturate(180%) blur(12px);
@@ -140,10 +140,10 @@
   .layout {
     flex: 1;
     display: grid;
-    grid-template-columns: 280px minmax(0, 1fr) 340px;
-    gap: var(--space-5);
-    padding: var(--space-5) var(--space-6) var(--space-8);
-    max-width: 1600px; width: 100%; margin: 0 auto;
+    grid-template-columns: 300px minmax(0, 1fr) 360px;
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-4) var(--space-6);
+    max-width: 100%; width: 100%; margin: 0 auto;
     align-items: start;
   }
   .col { display: flex; flex-direction: column; gap: var(--space-5); min-width: 0; }
@@ -638,8 +638,6 @@
         </div>
         <div class="watch-tabs">
           <div class="watch-tab active" data-grp="all">全部</div>
-          <div class="watch-tab" data-grp="up">涨幅榜</div>
-          <div class="watch-tab" data-grp="hold">持仓</div>
           <div class="watch-tab" data-grp="news" style="margin-left:auto;color:var(--accent)">📰 资讯</div>
         </div>
         <div class="watch-scroll" id="watchList"></div>
@@ -977,12 +975,26 @@ const MarketAPI = {
       cb(out);
     }).catch(()=>cb(null));
   },
-  // 先腾讯（快、批量），拿到六成以上即用；不足则东财逐只兜底
+  // 先腾讯（快、批量）→ 未拿到的（港股/韩股等）走 /api/quote 东财代理兜底
   fetchQuotes(items, cb){
     if(!items.length){ cb({}); return; }
     this._tencent(items,(out)=>{
-      if(out && Object.keys(out).length>=Math.ceil(items.length*0.6)){ cb(out); return; }
-      this._eastmoney(items,cb);
+      const missed=items.filter(it=>!out || out[it.secid]==null);
+      if(!missed.length){ cb(out); return; }
+      fetch('/api/quote?secid='+encodeURIComponent(missed.map(i=>i.secid).join(',')),{signal:AbortSignal.timeout(15000)})
+        .then(r=>r.json())
+        .then(j=>{
+          const q=(j&&j.quotes)||{};
+          missed.forEach(it=>{
+            const d=q[it.secid];
+            if(d && d.price!=null){
+              out[it.secid]={ name:d.name, price:d.price, prev:d.prev||0, open:d.open||0, high:d.high||0, low:d.low||0,
+                vol:0, amount:0, pe:null, pb:null, cap:0, turn:0, chgPct:d.chgPct };
+            }
+          });
+          cb(out);
+        })
+        .catch(()=>cb(out));
     });
   },
   async kline(secid, klt, lmt=240){
@@ -1415,13 +1427,39 @@ function loadQuoteFor(s){
 function loadAllQuotes(){
   if(dataMode!=='live') return;
   const items=STOCKS.map(s=>({secid:s.secid||secidOf(s.code),code:s.code,ref:s}));
-  if(current && !STOCKS.includes(current)) items.push({secid:current.secid||secidOf(current.code),ref:current});
+  if(current && !STOCKS.includes(current)) items.push({secid:current.secid||secidOf(current.code),code:current.code,ref:current});
   MarketAPI.fetchQuotes(items,(out)=>{
     if(!out){ setLive('fail'); return; }
     items.forEach(it=>{ const q=out[it.secid]; if(q) fillStockFromQuote(it.ref,q); });
     renderWatchlist(document.querySelector('.watch-tab.active').dataset.grp);
     renderDetailHeader(current); renderTrade(); renderAssets();
     setLive('ok');
+    loadMinutes();                     // 行情刷新后同步真实分时走势
+  });
+}
+
+// 真实分时走势：替换初始化时的模拟 spark，使迷你走势图与当日涨跌幅一致
+let lastMinuteAt=0;
+function loadMinutes(){
+  if(dataMode!=='live') return;
+  if(Date.now()-lastMinuteAt<240000) return;      // 4 分钟节流
+  lastMinuteAt=Date.now();
+  const pref=c=>/^(6|5|9)/.test(String(c))?'sh':'sz';
+  const list=STOCKS.filter(s=>/^\d{6}$/.test(String(s.code||''))).slice(0,20);
+  Promise.all(list.map(s=>{
+    const q=pref(s.code)+s.code;
+    return fetch('https://web.ifzq.gtimg.cn/appstock/app/minute/query?code='+q,{signal:AbortSignal.timeout(9000)})
+      .then(r=>r.json())
+      .then(j=>{
+        const d=j&&j.data&&j.data[q]&&j.data[q].data;
+        const arr=(d&&d.data)||[];
+        const prices=[];
+        arr.forEach(x=>{ const p=parseFloat(String(x).split(/\s+/)[1]); if(!isNaN(p)) prices.push(p); });
+        if(prices.length>1){ s.spark=prices; s.minuteDate=d.date; }   // 真实分时
+      })
+      .catch(()=>{});
+  })).then(()=>{
+    const g=activeGrp(); if(g!=='news') renderWatchlist(g);
   });
 }
 function setLive(status){
