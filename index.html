@@ -2356,7 +2356,9 @@ setLive('loading');
 ensureIndex();
 if(dataMode==='live'){ loadAllQuotes(); if(current && !current.gold) loadQuoteFor(current); refreshGold(); }
 // 定时刷新
-setInterval(()=>{ if(dataMode==='live'){ loadAllQuotes(); if(current && !current.gold) loadQuoteFor(current); refreshGold(); } }, 2000);
+setInterval(()=>{ if(dataMode==='live'){ loadAllQuotes(); if(current && !current.gold) loadQuoteFor(current); } }, 2000);
+// 现货黄金独立每秒刷新（报价卡 + 选中时分时图同步）
+setInterval(()=>{ if(dataMode==='live') refreshGold(); }, 1000);
 
 /* =========================================================
    同步引擎初始化与 UI 绑定
