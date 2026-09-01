@@ -1017,7 +1017,7 @@ const MarketAPI = {
     const tx = txCodeOfSecid(secid);
     if(tx){
       try{
-        const r=await fetch(`https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${tx},${period},,${lmt},qfq`,{signal:AbortSignal.timeout(12000)});
+        const r=await fetch(`https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=${tx},${period},,,${lmt},qfq`,{signal:AbortSignal.timeout(12000)});
         const d=await r.json();
         const node = d&&d.data&&(d.data[tx]||d.data[Object.keys(d.data||{})[0]]);
         let arr = node && (node[period] || node['qfq'+period]);
