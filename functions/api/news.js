@@ -10,7 +10,7 @@ export async function onRequestGet() {
     const r = await fetch('https://np-listapi.eastmoney.com/comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=30&req_trace=1', { signal: AbortSignal.timeout(10000), headers: { 'User-Agent': 'Mozilla/5.0' } });
     const j = await r.json();
     const list = (j && j.data && j.data.fastNewsList) || [];
-    return list.filter(x => x && x.summary).map(x => ({ src: 'em', id: 'em' + x.code, text: pick(x.summary), time: (x.showTime || '').slice(11, 16), date: (x.showTime || '').slice(0, 10), tag: '快讯', url: '', important: false }));
+    return list.filter(x => x && x.summary).map(x => ({ src: 'em', id: 'em' + x.code, text: pick(x.summary), time: (x.showTime || '').slice(11, 16), date: (x.showTime || '').slice(0, 10), tag: '快讯', url: '', important: false, img: (x.image || x.pic || '') }));
   }
   // 金十数据
   async function srcJin10() {
@@ -19,7 +19,7 @@ export async function onRequestGet() {
     const list = (j && j.data) || [];
     return list.filter(x => x && x.data && (x.data.content || x.data.title)).map(x => ({
       src: 'jin10', id: 'j' + x.id, text: pick(x.data.content || x.data.title), time: (x.time || '').slice(11, 16), date: (x.time || '').slice(0, 10),
-      tag: pick(x.data.source) || '金十', url: x.data.source_link || '', important: !!x.important
+      tag: pick(x.data.source) || '金十', url: x.data.source_link || '', important: !!x.important, img: (x.data.pic || x.data.image || '')
     }));
   }
   // 新浪 7x24
@@ -29,7 +29,7 @@ export async function onRequestGet() {
     const list = (j && j.result && j.result.data && j.result.data.feed && j.result.data.feed.list) || [];
     return list.filter(x => x && x.rich_text).map(x => ({
       src: 'sina', id: 's' + x.id, text: pick(x.rich_text), time: (x.create_time || '').slice(11, 16), date: (x.create_time || '').slice(0, 10),
-      tag: (x.tag && x.tag[0] && x.tag[0].name) || '', url: x.docurl || '', important: false
+      tag: (x.tag && x.tag[0] && x.tag[0].name) || '', url: x.docurl || '', important: false, img: (x.pic || x.article_pic || (Array.isArray(x.pic_urls) && x.pic_urls[0]) || '')
     }));
   }
 
@@ -58,7 +58,7 @@ export async function onRequestGet() {
       if (/突发|重磅|重大|紧急/.test(t)) score += 1;
       return {
         id: g.map(x => x.id).join('|'), text: first.text, time: first.time, date: first.date,
-        tag: first.tag, url: first.url, src: g.map(x => x.src).join('+'), n: g.length, score
+        tag: first.tag, url: first.url, src: g.map(x => x.src).join('+'), n: g.length, score, img: first.img || ''
       };
     });
 
