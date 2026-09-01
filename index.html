@@ -398,6 +398,17 @@
   .trend-sub .ts.active { background: var(--accent-soft); color: var(--accent); border-color: #dbe1ff; }
   .chart-loading { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); font-size: 12px; color: var(--text-3); background: rgba(255,255,255,.9); padding: 4px 12px; border-radius: 999px; box-shadow: var(--shadow-sm); }
   .chart-wrap { position: relative; }
+  .chart-actions { margin-left: auto; display: flex; gap: 4px; align-items: center; }
+  .zoom-btn { width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font-size: 15px; line-height: 1; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
+  .zoom-btn:hover { border-color: var(--border-strong); background: #eef1f5; }
+  .zoom-btn:active { transform: scale(.94); }
+  .chart-readout { position: absolute; top: 8px; left: 10px; z-index: 4; background: rgba(255,255,255,.94); border: 1px solid var(--border); border-radius: 9px; padding: 6px 10px; font-size: 11px; line-height: 1.55; color: var(--text); box-shadow: 0 3px 12px rgba(20,27,34,.12); pointer-events: none; max-width: 80%; }
+  .chart-readout .ro-date { font-weight: 700; font-size: 12px; margin-bottom: 3px; }
+  .chart-readout .ro-row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .chart-readout .ro-k { color: var(--text-3); margin-right: 3px; }
+  .chart-readout .ro-v { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .chart-readout .ro-up { color: var(--up); }
+  .chart-readout .ro-down { color: var(--down); }
 
   /* ============ Responsive ============ */
   @media (max-width: 1180px) {
@@ -683,16 +694,25 @@
           </div>
         </div>
         <div class="chart-tabs">
-          <div class="chart-tab active" data-chart="kline" data-period="day">日K</div>
+          <div class="chart-tab active" data-chart="trend">分时</div>
+          <div class="chart-tab" data-chart="kline" data-period="day">日K</div>
           <div class="chart-tab" data-chart="kline" data-period="week">周K</div>
           <div class="chart-tab" data-chart="kline" data-period="month">月K</div>
-          <div class="chart-tab" data-chart="trend">分时</div>
-          <div class="trend-sub" id="trendSub" hidden>
+          <div class="chart-actions">
+            <button class="zoom-btn" id="zoomOut" title="缩小">－</button>
+            <button class="zoom-btn" id="zoomReset" title="还原">⤢</button>
+            <button class="zoom-btn" id="zoomIn" title="放大">＋</button>
+          </div>
+          <div class="trend-sub" id="trendSub">
             <button class="ts active" data-tdays="1">当日</button>
             <button class="ts" data-tdays="5">五日</button>
           </div>
         </div>
-        <div class="chart-wrap"><canvas id="kline"></canvas><div class="chart-loading" id="chartLoading" hidden>加载实时数据…</div></div>
+        <div class="chart-wrap">
+          <canvas id="kline"></canvas>
+          <div class="chart-loading" id="chartLoading" hidden>加载实时数据…</div>
+          <div class="chart-readout" id="chartReadout" hidden></div>
+        </div>
         <div class="ma-legend" id="klineLegend">
           <span><i style="background:#3b5bfd"></i>MA5 <b class="num" id="ma5">—</b></span>
           <span><i style="background:#f59e0b"></i>MA10 <b class="num" id="ma10">—</b></span>
@@ -1240,9 +1260,14 @@ function sparkPath(spark, w=200, h=26){
 
 let current = STOCKS[0];
 let dataMode = 'live';            // live | mock
-let chartMode = 'kline';          // kline | trend
+let chartMode = 'trend';          // trend | kline
 let klinePeriod = 'day';         // day | week | month
 let trendDays = 1;                // 1 | 5
+let klineBars = 0;               // 0 = 自适应(全部)；否则可见根数（缩放）
+let klineOffset = 0;             // 往历史回翻的根数（拖动平移）
+let crossIdx = -1;               // 十字光标在可见序列中的索引（-1 表示无）
+let crossY = -1;                 // 十字光标纵坐标（像素）
+let lastDraw = null;             // 最近一次绘制的数据快照
 
 /* =========================================================
    渲染 — 自选股列表
@@ -1341,102 +1366,149 @@ function ma(data,n){ return data.map((_,i)=>{ if(i<n-1) return null; let s=0; fo
 
 function renderChart(){
   const s=current; if(!s) return;
-  if(chartMode==='kline'){
-    $('klineLegend').hidden=false; $('trendLegend').hidden=true;
-    const cached=s._kline&&s._kline[klinePeriod];
-    if(cached){ drawKLine(cached); return; }
-    if(dataMode==='live'){
-      showLoading(true);
-      MarketAPI.kline(s.secid||secidOf(s.code), kltOf(klinePeriod)).then(d=>{
-        showLoading(false);
-        if(d && d.length){ s._kline=s._kline||{}; s._kline[klinePeriod]=d; drawKLine(d); }
-        else drawKLine(aggregate(s.history,klinePeriod));
-      });
-    } else drawKLine(aggregate(s.history,klinePeriod));
-  } else {
-    $('klineLegend').hidden=true; $('trendLegend').hidden=false;
+  crossIdx=-1; crossY=-1; hideReadout();
+  if(chartMode==='trend'){
+    $('trendLegend').hidden=false; $('klineLegend').hidden=true;
     const cached=s._trend&&s._trend[trendDays];
-    if(cached){ drawTrend(cached, s.prev); return; }
+    if(cached){ lastDraw={mode:'trend',data:cached,prev:s.prev}; paint(); return; }
     if(dataMode==='live'){
       showLoading(true);
       MarketAPI.trends(s.secid||secidOf(s.code), trendDays).then(d=>{
         showLoading(false);
-        if(d && d.length){ s._trend=s._trend||{}; s._trend[trendDays]=d; drawTrend(d, s.prev); }
-        else drawTrend(mockTrend(s), s.prev);
-      });
-    } else drawTrend(mockTrend(s), s.prev);
+        const data=(d&&d.length)?d:mockTrend(s);
+        s._trend=s._trend||{}; s._trend[trendDays]=data;
+        lastDraw={mode:'trend',data,prev:s.prev}; paint();
+      }).catch(()=>{ showLoading(false); const data=mockTrend(s); lastDraw={mode:'trend',data,prev:s.prev}; paint(); });
+    } else { const data=mockTrend(s); lastDraw={mode:'trend',data,prev:s.prev}; paint(); }
+  } else {
+    $('klineLegend').hidden=false; $('trendLegend').hidden=true;
+    const cached=s._kline&&s._kline[klinePeriod];
+    if(cached){ lastDraw={mode:'kline',data:cached}; paint(); return; }
+    if(dataMode==='live'){
+      showLoading(true);
+      MarketAPI.kline(s.secid||secidOf(s.code), kltOf(klinePeriod)).then(d=>{
+        showLoading(false);
+        const data=(d&&d.length)?d:aggregate(s.history,klinePeriod);
+        s._kline=s._kline||{}; s._kline[klinePeriod]=data;
+        lastDraw={mode:'kline',data}; paint();
+      }).catch(()=>{ showLoading(false); const data=aggregate(s.history,klinePeriod); lastDraw={mode:'kline',data}; paint(); });
+    } else { const data=aggregate(s.history,klinePeriod); lastDraw={mode:'kline',data}; paint(); }
   }
 }
 function kltOf(p){ return p==='day'?101:p==='week'?102:103; }
 function mockTrend(s){
   const base=s.prev||s.price;
-  return s.spark.map((p,i)=>({ t:'', price:p, avg:p }));
+  const src=(s.spark&&s.spark.length>1)?s.spark:Array.from({length:60},(_,i)=>base);
+  return src.map(p=>({ t:'', price:p, avg:p }));
 }
 function showLoading(on){ $('chartLoading').hidden=!on; }
 
-function drawKLine(data){
-  const canvas=$('kline'); const dpr=window.devicePixelRatio||1;
-  const rect=canvas.getBoundingClientRect(); const W=rect.width, H=rect.height;
-  canvas.width=W*dpr; canvas.height=H*dpr;
-  const ctx=canvas.getContext('2d'); ctx.scale(dpr,dpr); ctx.clearRect(0,0,W,H);
-  const padL=8,padR=58,padT=14,volH=H*0.22,gap=14;
-  const priceH=H-padT-volH-gap-18; const plotW=W-padL-padR; const cw=plotW/data.length;
-  const bw=Math.max(2,Math.min(cw*0.62,16));
-  let min=Infinity,max=-Infinity,vmax=0;
-  data.forEach(d=>{ min=Math.min(min,d.low); max=Math.max(max,d.high); vmax=Math.max(vmax,d.vol); });
-  const rng=(max-min)||1; min-=rng*0.06; max+=rng*0.06;
-  const y=(p)=>padT+(1-(p-min)/(max-min))*priceH;
-  const vy=(v)=>padT+priceH+gap+(1-v/vmax)*volH;
-  ctx.font='10px ui-monospace, Menlo, Consolas, monospace'; ctx.textBaseline='middle';
-  for(let i=0;i<=4;i++){ const gg=padT+priceH*i/4; ctx.strokeStyle='#f0f2f5'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(padL,gg); ctx.lineTo(padL+plotW,gg); ctx.stroke(); const pv=max-(max-min)*i/4; ctx.fillStyle='#9aa3b0'; ctx.textAlign='left'; ctx.fillText(fmt(pv,1),padL+plotW+6,gg); }
-  ctx.textAlign='center'; ctx.fillStyle='#9aa3b0';
-  const labN=Math.min(6,data.length);
-  for(let i=0;i<labN;i++){ const idx=Math.round(i*(data.length-1)/(labN-1)); const d=data[idx].date; const lab=(klinePeriod==='month')?`${d.getMonth()+1}月`:`${d.getMonth()+1}/${d.getDate()}`; ctx.fillText(lab,padL+cw*idx+cw/2,H-6); }
-  data.forEach((d,i)=>{ const x=padL+cw*i+cw/2; const up=d.close>=d.open; ctx.fillStyle=up?'rgba(232,54,63,.55)':'rgba(18,160,90,.55)'; const yy=vy(d.vol),top=padT+priceH+gap; ctx.fillRect(x-bw/2,yy,bw,top+volH-yy); });
-  ctx.strokeStyle='#eef0f3'; ctx.beginPath(); ctx.moveTo(padL,padT+priceH+gap/2); ctx.lineTo(padL+plotW,padT+priceH+gap/2); ctx.stroke();
-  data.forEach((d,i)=>{ const x=padL+cw*i+cw/2; const up=d.close>=d.open; const col=up?'#e8363f':'#12a05a'; ctx.strokeStyle=col; ctx.fillStyle=col; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(x,y(d.high)); ctx.lineTo(x,y(d.low)); ctx.stroke(); const yo=y(d.open),yc=y(d.close); const top=Math.min(yo,yc),hgt=Math.max(1,Math.abs(yo-yc)); ctx.fillRect(x-bw/2,top,bw,hgt); });
-  const m5=ma(data,5),m10=ma(data,10),m20=ma(data,20);
-  const dm=(arr,color)=>{ ctx.strokeStyle=color; ctx.lineWidth=1.4; ctx.beginPath(); let st=false; arr.forEach((v,i)=>{ if(v==null) return; const x=padL+cw*i+cw/2,yy=y(v); if(!st){ctx.moveTo(x,yy);st=true;} else ctx.lineTo(x,yy); }); ctx.stroke(); };
-  dm(m5,'#3b5bfd'); dm(m10,'#f59e0b'); dm(m20,'#a855f7');
-  $('ma5').textContent = m5[m5.length-1]?fmt(m5[m5.length-1],2):'—';
-  $('ma10').textContent = m10[m10.length-1]?fmt(m10[m10.length-1],2):'—';
-  $('ma20').textContent = m20[m20.length-1]?fmt(m20[m20.length-1],2):'—';
+/* 当前可见窗口（应用缩放 klineBars 与回翻 klineOffset） */
+function viewWindow(data){
+  if(!data||!data.length) return [];
+  if(klineBars>0){
+    const total=data.length;
+    const n=Math.min(klineBars,total);
+    const end=Math.max(n, total-klineOffset);
+    const start=Math.max(0, end-n);
+    return data.slice(start,end);
+  }
+  return data;
 }
-function drawTrend(trends, prevClose){
+function paint(){
+  if(!lastDraw||!lastDraw.data||!lastDraw.data.length){ const c=$('kline'); if(c){ const x=c.getContext('2d'); x.clearRect(0,0,c.width,c.height); } return; }
+  if(lastDraw.mode==='kline') drawKLine(lastDraw.data, crossIdx);
+  else drawTrend(lastDraw.data, lastDraw.prev, crossIdx);
+}
+function hideReadout(){ const r=$('chartReadout'); if(r) r.hidden=true; }
+function fmtDate(dt){ if(!(dt instanceof Date)) return ''; const m=String(dt.getMonth()+1).padStart(2,'0'); const d=String(dt.getDate()).padStart(2,'0'); return `${dt.getFullYear()}-${m}-${d}`; }
+function fmtTime(t){ if(!t) return ''; const s=String(t); return s.includes(' ')?s.split(' ')[1].slice(0,5):s.slice(5,10); }
+function updateReadout(mode, item, prev){
+  const r=$('chartReadout'); if(!r) return;
+  if(!item){ r.hidden=true; return; }
+  r.hidden=false;
+  if(mode==='kline'){
+    const d=item, chg=d.close-d.open, pct=d.open?chg/d.open*100:0, up=d.close>=d.open, cls=up?'ro-up':'ro-down';
+    r.innerHTML=`<div class="ro-date">${fmtDate(d.date)}</div>`+
+      `<div class="ro-row"><span class="ro-k">开</span><span class="ro-v">${fmt(d.open,2)}</span><span class="ro-k">高</span><span class="ro-v">${fmt(d.high,2)}</span></div>`+
+      `<div class="ro-row"><span class="ro-k">收</span><span class="ro-v ${cls}">${fmt(d.close,2)}</span><span class="ro-k">低</span><span class="ro-v">${fmt(d.low,2)}</span></div>`+
+      `<div class="ro-row"><span class="ro-k">涨跌</span><span class="ro-v ${cls}">${(chg>=0?'+':'')+fmt(chg,2)} ${pct>=0?'+':''}${fmt(pct,2)}%</span><span class="ro-k">量</span><span class="ro-v">${(d.vol/1e4).toFixed(1)}万手</span></div>`;
+  } else {
+    const p=item, chg=p.price-prev, pct=prev?chg/prev*100:0, up=chg>=0, cls=up?'ro-up':'ro-down';
+    r.innerHTML=`<div class="ro-date">${fmtTime(p.t)}</div>`+
+      `<div class="ro-row"><span class="ro-k">价</span><span class="ro-v ${cls}">${fmt(p.price,2)}</span><span class="ro-k">涨跌</span><span class="ro-v ${cls}">${(chg>=0?'+':'')+fmt(chg,2)} ${pct>=0?'+':''}${fmt(pct,2)}%</span></div>`+
+      `<div class="ro-row"><span class="ro-k">均价</span><span class="ro-v">${fmt(p.avg,2)}</span><span class="ro-k">昨收</span><span class="ro-v">${fmt(prev,2)}</span></div>`;
+  }
+}
+function drawKLine(data, cross=-1){
+  const view=viewWindow(data);
   const canvas=$('kline'); const dpr=window.devicePixelRatio||1;
   const rect=canvas.getBoundingClientRect(); const W=rect.width,H=rect.height;
   canvas.width=W*dpr; canvas.height=H*dpr;
   const ctx=canvas.getContext('2d'); ctx.scale(dpr,dpr); ctx.clearRect(0,0,W,H);
-  if(!trends||trends.length<2){ ctx.fillStyle='#9aa3b0'; ctx.font='12px sans-serif'; ctx.textAlign='center'; ctx.fillText('暂无分时数据',W/2,H/2); return; }
-  const padL=8,padR=58,padT=14,bottom=H-22; const plotW=W-padL-padR, plotH=bottom-padT;
+  if(!view.length){ return; }
+  const padL=8,padR=58,padT=14,volH=H*0.22,gap=14,bottomAxis=18;
+  const priceH=H-padT-volH-gap-bottomAxis; const plotW=W-padL-padR; const cw=plotW/view.length;
+  const bw=Math.max(2,Math.min(cw*0.62,16));
+  let min=Infinity,max=-Infinity,vmax=0;
+  view.forEach(d=>{ min=Math.min(min,d.low); max=Math.max(max,d.high); vmax=Math.max(vmax,d.vol); });
+  const rng=(max-min)||1; min-=rng*0.06; max+=rng*0.06;
+  const y=p=>padT+(1-(p-min)/(max-min))*priceH;
+  const vy=v=>padT+priceH+gap+(1-v/(vmax||1))*volH;
+  ctx.font='10px ui-monospace, Menlo, Consolas, monospace'; ctx.textBaseline='middle';
+  for(let i=0;i<=4;i++){ const gg=padT+priceH*i/4; ctx.strokeStyle='#f0f2f5'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(padL,gg); ctx.lineTo(padL+plotW,gg); ctx.stroke(); const pv=max-(max-min)*i/4; ctx.fillStyle='#9aa3b0'; ctx.textAlign='left'; ctx.fillText(fmt(pv,1),padL+plotW+6,gg); }
+  view.forEach((d,i)=>{ const x=padL+cw*i+cw/2; const up=d.close>=d.open; ctx.fillStyle=up?'rgba(232,54,63,.5)':'rgba(18,160,90,.5)'; const yy=vy(d.vol),top=padT+priceH+gap; ctx.fillRect(x-bw/2,yy,bw,top+volH-yy); });
+  ctx.strokeStyle='#eef0f3'; ctx.beginPath(); ctx.moveTo(padL,padT+priceH+gap/2); ctx.lineTo(padL+plotW,padT+priceH+gap/2); ctx.stroke();
+  view.forEach((d,i)=>{ const x=padL+cw*i+cw/2; const up=d.close>=d.open; const col=up?'#e8363f':'#12a05a'; ctx.strokeStyle=col; ctx.fillStyle=col; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(x,y(d.high)); ctx.lineTo(x,y(d.low)); ctx.stroke(); const yo=y(d.open),yc=y(d.close); const top=Math.min(yo,yc),hgt=Math.max(1,Math.abs(yo-yc)); ctx.fillRect(x-bw/2,top,bw,hgt); });
+  const m5=ma(view,5),m10=ma(view,10),m20=ma(view,20);
+  const dm=(arr,color)=>{ ctx.strokeStyle=color; ctx.lineWidth=1.4; ctx.beginPath(); let st=false; arr.forEach((v,i)=>{ if(v==null) return; const x=padL+cw*i+cw/2,yy=y(v); if(!st){ctx.moveTo(x,yy);st=true;} else ctx.lineTo(x,yy); }); ctx.stroke(); };
+  dm(m5,'#3b5bfd'); dm(m10,'#f59e0b'); dm(m20,'#a855f7');
+  ctx.fillStyle='#9aa3b0'; ctx.textAlign='center'; ctx.textBaseline='top';
+  const labN=Math.min(6,view.length);
+  for(let i=0;i<labN;i++){ const idx=Math.round(i*(view.length-1)/(labN-1)); const d=view[idx].date; const lab=(klinePeriod==='month')?`${d.getMonth()+1}月`:`${d.getMonth()+1}/${d.getDate()}`; ctx.fillText(lab,padL+cw*idx+cw/2,H-bottomAxis+4); }
+  $('ma5').textContent=m5[m5.length-1]?fmt(m5[m5.length-1],2):'—';
+  $('ma10').textContent=m10[m10.length-1]?fmt(m10[m10.length-1],2):'—';
+  $('ma20').textContent=m20[m20.length-1]?fmt(m20[m20.length-1],2):'—';
+  if(cross>=0 && cross<view.length){
+    const cx=padL+cw*cross+cw/2; const baseBottom=padT+priceH+gap+volH;
+    ctx.strokeStyle='#7a828f'; ctx.setLineDash([4,3]); ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(cx,padT); ctx.lineTo(cx,baseBottom); ctx.stroke();
+    if(crossY>=padT && crossY<=baseBottom){ ctx.beginPath(); ctx.moveTo(padL,crossY); ctx.lineTo(padL+plotW,crossY); ctx.stroke(); const pv=min+(1-(crossY-padT)/priceH)*(max-min); ctx.fillStyle='#7a828f'; ctx.textAlign='left'; ctx.fillText(fmt(pv,2),padL+plotW+6,crossY); }
+    ctx.setLineDash([]);
+  }
+}
+function drawTrend(trends, prevClose, cross=-1){
+  const view=viewWindow(trends);
+  const canvas=$('kline'); const dpr=window.devicePixelRatio||1;
+  const rect=canvas.getBoundingClientRect(); const W=rect.width,H=rect.height;
+  canvas.width=W*dpr; canvas.height=H*dpr;
+  const ctx=canvas.getContext('2d'); ctx.scale(dpr,dpr); ctx.clearRect(0,0,W,H);
+  if(!view||view.length<2){ ctx.fillStyle='#9aa3b0'; ctx.font='12px sans-serif'; ctx.textAlign='center'; ctx.fillText('暂无分时数据',W/2,H/2); return; }
+  const padL=8,padR=58,padT=14,bottomAxis=22; const plotW=W-padL-padR, plotH=H-padT-bottomAxis;
   let min=Infinity,max=-Infinity;
-  trends.forEach(p=>{ min=Math.min(min,p.price); max=Math.max(max,p.price); });
+  view.forEach(p=>{ min=Math.min(min,p.price); max=Math.max(max,p.price); });
   if(prevClose!=null){ min=Math.min(min,prevClose); max=Math.max(max,prevClose); }
   const rng=(max-min)||1; min-=rng*0.08; max+=rng*0.08;
-  const x=(i)=>padL+plotW*i/(trends.length-1);
-  const y=(p)=>padT+(1-(p-min)/(max-min))*plotH;
+  const x=i=>padL+plotW*i/(view.length-1);
+  const y=p=>padT+(1-(p-min)/(max-min))*plotH;
   ctx.font='10px ui-monospace, Menlo, Consolas, monospace'; ctx.textBaseline='middle';
-  for(let i=0;i<=4;i++){ const gg=padT+plotH*i/4; ctx.strokeStyle='#f0f2f5'; ctx.beginPath(); ctx.moveTo(padL,gg); ctx.lineTo(padL+plotW,gg); ctx.stroke(); const pv=max-(max-min)*i/4; ctx.fillStyle='#9aa3b0'; ctx.textAlign='left'; ctx.fillText(fmt(pv,2),padL+plotW+6,gg=gg); }
-  // 昨收基准线
+  for(let i=0;i<=4;i++){ const gg=padT+plotH*i/4; ctx.strokeStyle='#f0f2f5'; ctx.beginPath(); ctx.moveTo(padL,gg); ctx.lineTo(padL+plotW,gg); ctx.stroke(); const pv=max-(max-min)*i/4; ctx.fillStyle='#9aa3b0'; ctx.textAlign='left'; ctx.fillText(fmt(pv,2),padL+plotW+6,gg); }
   if(prevClose!=null){ ctx.strokeStyle='#c4cad3'; ctx.setLineDash([4,3]); ctx.beginPath(); ctx.moveTo(padL,y(prevClose)); ctx.lineTo(padL+plotW,y(prevClose)); ctx.stroke(); ctx.setLineDash([]); }
-  const last=trends[trends.length-1].price;
-  const up = prevClose==null ? true : last>=prevClose;
-  const col = up?'#e8363f':'#12a05a';
-  // 均价线
-  ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1; ctx.beginPath();
-  trends.forEach((p,i)=>{ const xx=x(i),yy=y(p.avg); if(i===0)ctx.moveTo(xx,yy); else ctx.lineTo(xx,yy); }); ctx.stroke();
-  // 价格面积 + 线
-  const grad=ctx.createLinearGradient(0,padT,0,bottom); grad.addColorStop(0, up?'rgba(232,54,63,.22)':'rgba(18,160,90,.22)'); grad.addColorStop(1,'rgba(255,255,255,0)');
-  ctx.beginPath(); ctx.moveTo(x(0),y(trends[0].price));
-  trends.forEach((p,i)=>ctx.lineTo(x(i),y(p.price)));
-  ctx.lineTo(x(trends.length-1),bottom); ctx.lineTo(x(0),bottom); ctx.closePath(); ctx.fillStyle=grad; ctx.fill();
-  ctx.beginPath(); ctx.moveTo(x(0),y(trends[0].price));
-  trends.forEach((p,i)=>ctx.lineTo(x(i),y(p.price)));
-  ctx.strokeStyle=col; ctx.lineWidth=1.6; ctx.stroke();
-  // x 轴时间标签
+  const last=view[view.length-1].price; const up=prevClose==null?true:last>=prevClose; const col=up?'#e8363f':'#12a05a';
+  ctx.strokeStyle='#94a3b8'; ctx.lineWidth=1; ctx.beginPath(); view.forEach((p,i)=>{ const xx=x(i),yy=y(p.avg); if(i===0)ctx.moveTo(xx,yy); else ctx.lineTo(xx,yy); }); ctx.stroke();
+  const grad=ctx.createLinearGradient(0,padT,0,padT+plotH); grad.addColorStop(0, up?'rgba(232,54,63,.22)':'rgba(18,160,90,.22)'); grad.addColorStop(1,'rgba(255,255,255,0)');
+  ctx.beginPath(); ctx.moveTo(x(0),y(view[0].price)); view.forEach((p,i)=>ctx.lineTo(x(i),y(p.price))); ctx.lineTo(x(view.length-1),padT+plotH); ctx.lineTo(x(0),padT+plotH); ctx.closePath(); ctx.fillStyle=grad; ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x(0),y(view[0].price)); view.forEach((p,i)=>ctx.lineTo(x(i),y(p.price))); ctx.strokeStyle=col; ctx.lineWidth=1.6; ctx.stroke();
   ctx.fillStyle='#9aa3b0'; ctx.textAlign='center'; ctx.textBaseline='top';
-  const labN=Math.min(4,trends.length);
-  for(let i=0;i<labN;i++){ const idx=Math.round(i*(trends.length-1)/(labN-1)); const t=trends[idx].t; let lab=''; if(trendDays===1){ const mm=t.split(' ')[1]||''; lab=mm.slice(0,5); } else { lab=t.slice(5,10); } ctx.fillText(lab, x(idx), bottom+6); }
+  const labN=Math.min(4,view.length);
+  for(let i=0;i<labN;i++){ const idx=Math.round(i*(view.length-1)/(labN-1)); const t=view[idx].t; let lab=''; if(trendDays===1){ const mm=t.split(' ')[1]||''; lab=mm.slice(0,5); } else { lab=t.slice(5,10); } ctx.fillText(lab, x(idx), padT+plotH+6); }
+  if(cross>=0 && cross<view.length){
+    const cx=x(cross);
+    ctx.strokeStyle='#7a828f'; ctx.setLineDash([4,3]); ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(cx,padT); ctx.lineTo(cx,padT+plotH); ctx.stroke();
+    if(crossY>=padT && crossY<=padT+plotH){ ctx.beginPath(); ctx.moveTo(padL,crossY); ctx.lineTo(padL+plotW,crossY); ctx.stroke(); const pv=max-(max-min)*(crossY-padT)/plotH; ctx.fillStyle='#7a828f'; ctx.textAlign='left'; ctx.fillText(fmt(pv,2),padL+plotW+6,crossY); }
+    ctx.setLineDash([]);
+  }
 }
 
 /* =========================================================
@@ -1673,12 +1745,64 @@ document.querySelectorAll('.chart-tab').forEach(t=>{
   t.onclick=()=>{
     document.querySelectorAll('.chart-tab').forEach(x=>x.classList.remove('active'));
     t.classList.add('active');
+    klineOffset=0; crossIdx=-1; crossY=-1;
     if(t.dataset.chart==='trend'){ chartMode='trend'; $('trendSub').hidden=false; }
     else { chartMode='kline'; klinePeriod=t.dataset.period; $('trendSub').hidden=true; }
     renderChart();
   };
 });
 document.querySelectorAll('.trend-sub .ts').forEach(b=>{ b.onclick=()=>{ document.querySelectorAll('.trend-sub .ts').forEach(x=>x.classList.remove('active')); b.classList.add('active'); trendDays=+b.dataset.tdays; if(chartMode==='trend') renderChart(); }; });
+
+/* 图表缩放 / 十字光标 / 拖动平移 */
+function bindChartCrosshair(){
+  const canvas=$('kline'); if(!canvas) return;
+  const padL=8,padR=58;
+  const idxFromX=(clientX)=>{
+    const rect=canvas.getBoundingClientRect(); const plotW=rect.width-padL-padR;
+    const data=(lastDraw&&lastDraw.data)?viewWindow(lastDraw.data):[];
+    if(!data.length) return -1;
+    const cw=plotW/data.length;
+    return Math.max(0,Math.min(data.length-1, Math.floor((clientX-rect.left-padL)/cw)));
+  };
+  const setCross=(clientX,clientY)=>{
+    if(!lastDraw||!lastDraw.data) return;
+    const rect=canvas.getBoundingClientRect(); crossY=clientY-rect.top;
+    crossIdx=idxFromX(clientX);
+    const item=viewWindow(lastDraw.data)[crossIdx];
+    updateReadout(lastDraw.mode,item,lastDraw.prev);
+  };
+  let dragging=false, dragStartX=0, dragStartOffset=0;
+  canvas.addEventListener('mousedown',e=>{ dragging=true; dragStartX=e.clientX; dragStartOffset=klineOffset; });
+  window.addEventListener('mouseup',()=>{ dragging=false; });
+  canvas.addEventListener('mousemove',e=>{
+    if(dragging){
+      const total=lastDraw&&lastDraw.data?lastDraw.data.length:0;
+      const rect=canvas.getBoundingClientRect(); const cw=(rect.width-padL-padR)/Math.max(1,total);
+      let off=Math.max(0,dragStartOffset+Math.round((e.clientX-dragStartX)/cw));
+      const maxOff=Math.max(0,total-(klineBars||total));
+      klineOffset=Math.min(off,maxOff);
+    }
+    setCross(e.clientX,e.clientY); paint();
+  });
+  canvas.addEventListener('mouseleave',()=>{ dragging=false; crossIdx=-1; crossY=-1; hideReadout(); paint(); });
+  canvas.addEventListener('wheel',e=>{ e.preventDefault(); applyZoom(e.deltaY>0?40:-40); },{passive:false});
+  canvas.addEventListener('touchstart',e=>{ const t=e.touches[0]; if(t) setCross(t.clientX,t.clientY); paint(); },{passive:true});
+  canvas.addEventListener('touchmove',e=>{ const t=e.touches[0]; if(t){ setCross(t.clientX,t.clientY); paint(); } e.preventDefault(); },{passive:false});
+}
+function applyZoom(delta){
+  const total=lastDraw&&lastDraw.data?lastDraw.data.length:0;
+  const cur=klineBars>0?klineBars:(total||240);
+  let n=Math.max(20,Math.min(2000,cur+delta));
+  klineBars=(n>=total||total===0)?0:n;
+  const maxOff=Math.max(0,total-(klineBars||total));
+  klineOffset=Math.min(klineOffset,maxOff);
+  paint();
+}
+$('zoomIn').onclick=()=>applyZoom(-40);
+$('zoomOut').onclick=()=>applyZoom(40);
+$('zoomReset').onclick=()=>{ klineBars=0; klineOffset=0; paint(); };
+window.addEventListener('resize',()=>{ if(current) renderChart(); });
+bindChartCrosshair();
 
 // 数据源切换
 (function(){
