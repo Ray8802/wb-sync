@@ -209,16 +209,16 @@
   .news-fire { font-size: 12px; }
   .news-multi { background: #fff3e0; color: #e65100; border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 600; }
   .news-srcmark { margin-left: auto; color: var(--text-3); font-size: 10px; }
-  .news-item { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px; cursor: pointer; transition: .15s; background: var(--card); }
+  .news-item { padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px; cursor: pointer; transition: .15s; background: var(--card); min-width: 0; overflow: hidden; }
   .news-item:hover { border-color: var(--accent); box-shadow: 0 2px 8px rgba(59,91,253,.08); }
-  .news-meta { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; font-size: 11px; color: var(--text-3); }
+  .news-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 6px; font-size: 11px; color: var(--text-3); }
   .news-tag { background: var(--accent-soft); color: var(--accent); border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 600; }
-  .news-text { font-size: 13px; color: var(--text); line-height: 1.65; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .news-text { font-size: 13px; color: var(--text); line-height: 1.65; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; word-break: break-word; }
   .news-item.open .news-text { -webkit-line-clamp: unset; }
   .news-empty { color: var(--text-3); font-size: 13px; text-align: center; padding: 30px 0; }
   .news-link { margin-left: auto; color: var(--accent); font-size: 11px; }
 
-  .watch-scroll { max-height: calc(100vh - 320px); overflow-y: auto; padding: 6px; }
+  .watch-scroll { max-height: calc(100vh - 320px); overflow-y: auto; overflow-x: hidden; padding: 6px; min-width: 0; }
   .watch-scroll::-webkit-scrollbar { width: 6px; }
   .watch-scroll::-webkit-scrollbar-thumb { background: #dfe3ea; border-radius: 3px; }
 
