@@ -721,7 +721,7 @@
             <span class="news-src">财经快讯 · 三源聚合 <span class="news-live">●</span></span>
             <button class="news-refresh" id="newsRefresh">↻ 刷新</button>
           </div>
-          <div class="news-next" id="newsNext"></div>
+          <div class="news-next" id="newsNext"><span id="newsNextAt"></span><span id="newsNextLeft"></span></div>
           <div id="newsItems"></div>
           <div class="news-empty" id="newsEmpty">加载中…</div>
         </div>
@@ -1934,14 +1934,16 @@ function fmtClock(ts){
   return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
 }
 
-// 把"下次自动刷新"时间渲染到状态行（每秒由独立 tick 刷新，不触发数据拉取）
+// 把"下次自动刷新"时间渲染到状态行。
+// 固定时间(newsNextAt)只在手动/自动刷新时设定，用 textContent 局部更新、不重建 DOM。
 function renderNewsNext(){
-  const el=$('newsNext'); if(!el) return;
-  if(!newsNextAt){ el.innerHTML=''; return; }
-  const left=Math.max(0, newsNextAt-Date.now());
-  const m=Math.floor(left/60000), s=Math.floor((left%60000)/1000);
-  const tail=(m||s)?`（约 ${m} 分 ${s} 秒后）`:'（即将刷新）';
-  el.innerHTML='下次自动刷新 <b>'+fmtClock(newsNextAt)+'</b> '+tail;
+  const at=$('newsNextAt'), left=$('newsNextLeft');
+  if(!at) return;
+  if(!newsNextAt){ at.textContent=''; left.textContent=''; return; }
+  at.textContent='下次自动刷新 '+fmtClock(newsNextAt)+'（数据每 5 分钟或手动拉取）';
+  const ms=Math.max(0, newsNextAt-Date.now());
+  const m=Math.floor(ms/60000), s=Math.floor((ms%60000)/1000);
+  left.textContent=(m||s)?` 约 ${m} 分 ${s} 秒后`:' 即将刷新';
 }
 function loadNews(silent){
   const box=$('newsItems'); const empty=$('newsEmpty');
@@ -2493,8 +2495,8 @@ setInterval(()=>{ if(dataMode==='live') refreshGold(); }, 1000);
 initResizers();
 // 新闻弹窗交互：关闭/遮罩/放大图均通过 HTML 内联 onclick 绑定（弹窗 DOM 在脚本之后解析，初始化时取不到元素，故不走 JS 绑定）
 document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ if(!$('newsLightbox').hidden) hideLightbox(); else if(!$('newsModal').hidden) closeNews(); } });
-// 资讯"下次自动刷新"倒计时：每秒只更新文本，不拉数据，与自动/手动刷新互不干扰
-setInterval(renderNewsNext, 1000);
+// 资讯"下次自动刷新"倒计时：每 10 秒轻量更新剩余时间文本（textContent，不重建 DOM、不拉数据），与自动/手动刷新互不干扰
+setInterval(renderNewsNext, 10000);
 
 /* =========================================================
    同步引擎初始化与 UI 绑定
