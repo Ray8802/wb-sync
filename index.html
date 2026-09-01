@@ -140,12 +140,34 @@
   .layout {
     flex: 1;
     display: grid;
-    grid-template-columns: 264px minmax(0, 1fr) 312px;
-    gap: var(--space-3);
+    grid-template-columns: var(--wl, 264px) 7px minmax(0, 1fr) 7px var(--wr, 312px);
+    gap: 0;
     padding: var(--space-3) var(--space-3) var(--space-5);
     max-width: 100%; width: 100%; margin: 0 auto;
     align-items: start;
   }
+  /* 可拖拽分栏分隔条 */
+  .resizer {
+    align-self: stretch;
+    cursor: col-resize;
+    position: relative;
+    z-index: 6;
+  }
+  .resizer::after {
+    content: "";
+    position: absolute;
+    top: 6px; bottom: 6px; left: 50%;
+    width: 2px; transform: translateX(-50%);
+    background: var(--border);
+    border-radius: 2px;
+    transition: background .15s, width .15s;
+  }
+  .resizer:hover::after, .resizer.active::after {
+    background: var(--accent, #4f7cff);
+    width: 3px;
+  }
+  body.resizing { cursor: col-resize !important; user-select: none; }
+  body.resizing .col, body.resizing .resizer { pointer-events: none; }
   .col { display: flex; flex-direction: column; gap: var(--space-5); min-width: 0; }
   .col-watch { position: sticky; top: 76px; }
   .col-side { position: sticky; top: 76px; }
@@ -429,6 +451,7 @@
     .col-side { grid-column: 1 / -1; flex-direction: row; flex-wrap: wrap; }
     .col-side > * { flex: 1 1 320px; }
     .col-watch { position: static; }
+    .resizer { display: none; }
   }
 
   /* ---- 平板 / 手机（≤820px）：单栏 + 顶栏两行 + 搜索图标按钮 ---- */
@@ -456,6 +479,7 @@
 
     .layout { grid-template-columns: 1fr; padding: 12px; gap: 12px; }
     .col { gap: 12px; }
+    .resizer { display: none; }
     .col-side { flex-direction: column; }
     .col-side > * { flex: 1 1 auto; }
 
@@ -685,6 +709,7 @@
     </section>
 
     <!-- ===== Center detail column ===== -->
+    <div class="resizer" id="rzL" title="拖拽调节左侧自选股宽度"></div>
     <section class="col col-detail">
       <div class="card">
         <div class="detail-head">
@@ -746,6 +771,7 @@
     </section>
 
     <!-- ===== Side column ===== -->
+    <div class="resizer" id="rzR" title="拖拽调节右侧栏宽度"></div>
     <section class="col col-side">
       <!-- 现货黄金 实时行情 -->
       <div class="card gold-card" id="goldCard" title="点击查看分时走势">
@@ -1341,6 +1367,45 @@ function refreshGold(){
     renderGoldCard();
     if(current===GOLD && chartMode==='trend'){ delete GOLD._trend[trendDays]; renderChart(); }
   });
+}
+function initResizers(){
+  const layout=document.querySelector('.layout');
+  const rzL=$('rzL'), rzR=$('rzR');
+  if(!layout||!rzL||!rzR) return;
+  const saved=JSON.parse(localStorage.getItem('wb_layout')||'{}');
+  if(saved.wl) layout.style.setProperty('--wl', saved.wl+'px');
+  if(saved.wr) layout.style.setProperty('--wr', saved.wr+'px');
+  const MINL=180, MAXL=560, MINR=200, MAXR=560;
+  function start(rz, side){
+    rz.addEventListener('pointerdown', e=>{
+      e.preventDefault();
+      rz.classList.add('active');
+      document.body.classList.add('resizing');
+      const rect=layout.getBoundingClientRect();
+      const pl=parseFloat(getComputedStyle(layout).paddingLeft)||0;
+      const pr=parseFloat(getComputedStyle(layout).paddingRight)||0;
+      function move(ev){
+        let w = side==='l' ? (ev.clientX-rect.left-pl) : (rect.right-ev.clientX-pr);
+        w = Math.round(w);
+        if(side==='l') w=Math.max(MINL, Math.min(MAXL, w));
+        else w=Math.max(MINR, Math.min(MAXR, w));
+        layout.style.setProperty(side==='l'?'--wl':'--wr', w+'px');
+      }
+      function up(){
+        rz.classList.remove('active');
+        document.body.classList.remove('resizing');
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', up);
+        const cs=getComputedStyle(layout);
+        const wl=parseInt(cs.getPropertyValue('--wl'))||264;
+        const wr=parseInt(cs.getPropertyValue('--wr'))||312;
+        localStorage.setItem('wb_layout', JSON.stringify({wl, wr}));
+      }
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', up);
+    });
+  }
+  start(rzL,'l'); start(rzR,'r');
 }
 function renderGoldCard(){
   const el=$('goldPrice'); if(!el) return;
@@ -2359,6 +2424,8 @@ if(dataMode==='live'){ loadAllQuotes(); if(current && !current.gold) loadQuoteFo
 setInterval(()=>{ if(dataMode==='live'){ loadAllQuotes(); if(current && !current.gold) loadQuoteFor(current); } }, 2000);
 // 现货黄金独立每秒刷新（报价卡 + 选中时分时图同步）
 setInterval(()=>{ if(dataMode==='live') refreshGold(); }, 1000);
+// 可拖拽分栏
+initResizers();
 
 /* =========================================================
    同步引擎初始化与 UI 绑定
