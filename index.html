@@ -299,6 +299,19 @@
   .legend-item .nm { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .legend-item .pc { margin-left: auto; font-weight: 650; font-family: var(--mono); }
 
+  /* ============ 现货黄金 行情卡 ============ */
+  .gold-card { border: 1px solid var(--border); }
+  .gold-card.active { border-color: var(--gold-accent,#d9a519); box-shadow: 0 0 0 3px rgba(217,165,25,.15); }
+  .gold-card .card-head .ico { color: var(--gold-accent,#d9a519); }
+  .gold-card .sub { color: var(--text-3); font-weight: 500; font-size: 12px; }
+  .gold-body { padding: var(--space-5); cursor: pointer; transition: background .15s; }
+  .gold-body:hover { background: var(--surface-2); }
+  .gold-price { font-size: 30px; font-weight: 750; line-height: 1.1; letter-spacing: .5px; }
+  .gold-chg { display: flex; gap: 10px; margin-top: 6px; font-size: 15px; font-weight: 650; }
+  .gold-meta { display: flex; gap: 14px; margin-top: 12px; font-size: 12.5px; color: var(--text-2); }
+  .gold-meta b { color: var(--text); font-family: var(--mono); font-weight: 650; margin-left: 4px; }
+  .gold-unit { margin-top: 10px; font-size: 11.5px; color: var(--text-3); }
+
   /* ============ Quick Trade ============ */
   .trade-body { padding: var(--space-5); }
   .trade-stock {
@@ -734,6 +747,28 @@
 
     <!-- ===== Side column ===== -->
     <section class="col col-side">
+      <!-- 现货黄金 实时行情 -->
+      <div class="card gold-card" id="goldCard" title="点击查看分时走势">
+        <div class="card-head">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="8.2"/><path d="M12 7.6v8.8M9.2 9.7h5.1M9.2 14.3h5.1"/></svg>
+          <h2>现货黄金</h2>
+          <span class="sub">伦敦金 · XAU/USD</span>
+        </div>
+        <div class="gold-body" id="goldBody">
+          <div class="gold-price num" id="goldPrice">—</div>
+          <div class="gold-chg">
+            <span class="num" id="goldChgAbs">—</span>
+            <span class="num" id="goldChgPct">—</span>
+          </div>
+          <div class="gold-meta">
+            <span>开<b class="num" id="goldOpen">—</b></span>
+            <span>高<b class="num" id="goldHigh">—</b></span>
+            <span>低<b class="num" id="goldLow">—</b></span>
+          </div>
+          <div class="gold-unit" id="goldUpdate">美元/盎司</div>
+        </div>
+      </div>
+
       <!-- Asset overview -->
       <div class="card">
         <div class="card-head">
@@ -1266,6 +1301,73 @@ let trendDays = 1;                // 1 | 5
 let klineBars = 0;               // 0 = 自适应(全部)；否则可见根数（缩放）
 let klineOffset = 0;             // 往历史回翻的根数（拖动平移）
 let crossIdx = -1;               // 十字光标在可见序列中的索引（-1 表示无）
+
+/* =========================================================
+   现货黄金（伦敦金 XAU/USD）— 独立行情品种，不入自选 / 资产
+   数据源：腾讯 qt.gtimg.cn hf_XAU（实时报价，CORS 友好）
+           东财 push2his trends2 122.XAU（当日 / 五日 分时）
+   说明：国际现货黄金在免费行情源中无历史 K 线，仅提供分时走势
+   ========================================================= */
+const GOLD = {
+  name:'现货黄金', code:'XAU', secid:'122.XAU', market:'国际', type:'贵金属', gold:true,
+  prev:0, price:0, open:0, high:0, low:0, volHands:0,
+  history:genHistory({code:'XAU',prev:0,price:0}), spark:[]
+};
+GOLD.spark = GOLD.history.slice(-30).map(h=>h.close);
+GOLD._trend = {};
+
+// 解析腾讯 hf_XAU：v_hf_XAU="现价,涨跌幅%,买,卖,高,低,时间,昨收,今开,0,0,0,日期,名称"
+function parseGold(text){
+  const m=text.match(/v_hf_XAU="([^"]*)"/);
+  if(!m) return null;
+  const p=m[1].split(',');
+  if(p.length<9) return null;
+  const price=+p[0], prev=+p[7];
+  if(!isFinite(price)||!isFinite(prev)||!prev) return null;
+  return { price, prev, open:+p[8], high:+p[4], low:+p[5], name:p[13]||'现货黄金',
+    chg:price-prev, chgPct:(price-prev)/prev*100 };
+}
+function fetchGoldQuote(cb){
+  fetch('https://qt.gtimg.cn/q=hf_XAU&_t='+Date.now(),{signal:AbortSignal.timeout(10000)})
+    .then(r=>r.arrayBuffer())
+    .then(buf=>{ const text=new TextDecoder('gbk').decode(buf); cb(parseGold(text)); })
+    .catch(()=>cb(null));
+}
+function refreshGold(){
+  fetchGoldQuote(q=>{
+    if(!q) return;
+    GOLD.price=q.price; GOLD.prev=q.prev; GOLD.open=q.open; GOLD.high=q.high; GOLD.low=q.low;
+    if(q.name) GOLD.fullName=q.name;
+    renderGoldCard();
+    if(current===GOLD && chartMode==='trend'){ delete GOLD._trend[trendDays]; renderChart(); }
+  });
+}
+function renderGoldCard(){
+  const el=$('goldPrice'); if(!el) return;
+  const has=GOLD.price>0;
+  const chg=GOLD.price-GOLD.prev, p=GOLD.prev?chg/GOLD.prev*100:0;
+  const cls=chg>0?'up':chg<0?'down':'flat';
+  $('goldPrice').textContent = has? fmt(GOLD.price,2) : '—';
+  $('goldPrice').className='gold-price num '+cls;
+  $('goldChgAbs').textContent = has? ((chg>=0?'+':'')+fmt(chg,2)) : '—';
+  $('goldChgAbs').className='num '+cls;
+  $('goldChgPct').textContent = has? pct(p) : '—';
+  $('goldChgPct').className='num '+cls;
+  $('goldOpen').textContent = GOLD.open? fmt(GOLD.open,2):'—';
+  $('goldHigh').textContent = GOLD.high? fmt(GOLD.high,2):'—';
+  $('goldLow').textContent  = GOLD.low?  fmt(GOLD.low,2):'—';
+  $('goldUpdate').textContent='美元/盎司 · 伦敦金 XAU/USD'+(has?' · 实时':' · 连接中…');
+}
+function selectGold(){
+  current=GOLD;
+  chartMode='trend'; trendDays=1; klineOffset=0; crossIdx=-1; crossY=-1;
+  document.querySelectorAll('.watch-tab').forEach(x=>x.classList.remove('active'));
+  const tt=document.querySelector('.chart-tab[data-chart="trend"]');
+  if(tt){ document.querySelectorAll('.chart-tab').forEach(x=>x.classList.remove('active')); tt.classList.add('active'); }
+  $('trendSub').hidden=false;
+  const gc=$('goldCard'); if(gc) gc.classList.add('active');
+  renderDetailHeader(GOLD); renderChart(); refreshGold();
+}
 let crossY = -1;                 // 十字光标纵坐标（像素）
 let lastDraw = null;             // 最近一次绘制的数据快照
 
@@ -1356,7 +1458,7 @@ function renderDetailHeader(s){
   $('dOpen').textContent=fmt(s.open||s.prev,2);
   $('dHigh').textContent=fmt(s.high||s.price,2);
   $('dLow').textContent=fmt(s.low||s.price,2);
-  $('dVol').textContent=((s.volHands||0)/1e4).toFixed(1)+'万手';
+  $('dVol').textContent = s.gold ? '—' : ((s.volHands||0)/1e4).toFixed(1)+'万手';
   $('iPe').textContent=s.pe!=null?fmt(s.pe,2):(typeof s.cap==='number'?fmt(s.cap,2):'—');
   $('iPb').textContent=s.pb!=null?fmt(s.pb,2):'—';
   $('iCap').textContent=(s.mktCapYi!=null)?fmt(s.mktCapYi,0)+'亿':(typeof s.cap==='string'?s.cap:'—');
@@ -1366,6 +1468,8 @@ function ma(data,n){ return data.map((_,i)=>{ if(i<n-1) return null; let s=0; fo
 
 function renderChart(){
   const s=current; if(!s) return;
+  // 现货黄金（伦敦金）为国际现货品种，免费行情源仅提供分时，无历史 K 线
+  if(s.gold && chartMode==='kline'){ $('klineLegend').hidden=true; $('trendLegend').hidden=true; drawChartMsg('现货黄金（伦敦金 XAU/USD）\n为国际现货品种\n免费行情仅提供 当日 / 五日 分时\n暂无历史 K 线数据'); return; }
   crossIdx=-1; crossY=-1; hideReadout();
   if(chartMode==='trend'){
     $('trendLegend').hidden=false; $('klineLegend').hidden=true;
@@ -1421,6 +1525,15 @@ function paint(){
   else drawTrend(lastDraw.data, lastDraw.prev, crossIdx);
 }
 function hideReadout(){ const r=$('chartReadout'); if(r) r.hidden=true; }
+function drawChartMsg(msg){
+  const c=$('kline'); if(!c) return; const dpr=window.devicePixelRatio||1;
+  const rect=c.getBoundingClientRect(); const W=rect.width||c.width, H=rect.height||c.height;
+  c.width=W*dpr; c.height=H*dpr; const ctx=c.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#9aa3b0'; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.font='13px system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
+  const lines=String(msg).split('\n'); const lh=22; const y0=H/2-(lines.length-1)*lh/2;
+  lines.forEach((ln,i)=>ctx.fillText(ln, W/2, y0+i*lh));
+}
 function fmtDate(dt){ if(!(dt instanceof Date)) return ''; const m=String(dt.getMonth()+1).padStart(2,'0'); const d=String(dt.getDate()).padStart(2,'0'); return `${dt.getFullYear()}-${m}-${d}`; }
 function fmtTime(t){ if(!t) return ''; const s=String(t); return s.includes(' ')?s.split(' ')[1].slice(0,5):s.slice(5,10); }
 function updateReadout(mode, item, prev){
@@ -1540,6 +1653,7 @@ function renderTrade(){}   // 已移除快捷交易，保留空桩避免调用�
    ========================================================= */
 function selectStock(s){
   current=s;
+  const gc=$('goldCard'); if(gc) gc.classList.remove('active');
   if(!s.history){ s.history=genHistory(s); s.spark=s.history.slice(-30).map(h=>h.close); }
   renderWatchlist(document.querySelector('.watch-tab.active').dataset.grp);
   renderDetailHeader(s); renderTrade(); renderChart();
@@ -1704,6 +1818,10 @@ if(sortBtn) sortBtn.onclick=()=>{
   watchSort = watchSort==='none' ? 'chgDesc' : watchSort==='chgDesc' ? 'chgAsc' : 'none';
   renderWatchlist(activeGrp());
 };
+
+// 现货黄金 卡片：点击进入详情（分时走势）
+const goldBodyEl=$('goldBody');
+if(goldBodyEl) goldBodyEl.onclick=()=>selectGold();
 
 // ===== 财经资讯（三源聚合 + 重大优先） =====
 let newsTimer=null;
@@ -2233,12 +2351,12 @@ window.WBSync = WBSync;
 /* =========================================================
    初始化
    ========================================================= */
-renderWatchlist('all'); renderDetailHeader(current); renderTrade(); renderChart(); renderAssets();
+renderWatchlist('all'); renderDetailHeader(current); renderTrade(); renderChart(); renderAssets(); renderGoldCard();
 setLive('loading');
 ensureIndex();
-if(dataMode==='live'){ loadAllQuotes(); loadQuoteFor(current); }
+if(dataMode==='live'){ loadAllQuotes(); if(current && !current.gold) loadQuoteFor(current); refreshGold(); }
 // 定时刷新
-setInterval(()=>{ if(dataMode==='live'){ loadAllQuotes(); if(current) loadQuoteFor(current); } }, 2000);
+setInterval(()=>{ if(dataMode==='live'){ loadAllQuotes(); if(current && !current.gold) loadQuoteFor(current); refreshGold(); } }, 2000);
 
 /* =========================================================
    同步引擎初始化与 UI 绑定
