@@ -222,7 +222,7 @@
   .news-modal[hidden], .news-lightbox[hidden] { display: none; }
   .news-modal-mask { position: absolute; inset: 0; background: rgba(15,18,28,.5); backdrop-filter: blur(2px); }
   .news-modal-card { position: relative; z-index: 1; width: min(580px, 94vw); max-height: 86vh; overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 22px 24px; box-shadow: 0 24px 70px rgba(0,0,0,.35); }
-  .news-modal-close { position: absolute; top: 12px; right: 14px; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); font-size: 18px; line-height: 1; cursor: pointer; }
+  .news-modal-close { position: absolute; top: 12px; right: 14px; width: 30px; height: 30px; z-index: 5; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); font-size: 18px; line-height: 1; cursor: pointer; }
   .news-modal-close:hover { border-color: var(--accent); color: var(--accent); }
   .news-modal-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; padding-right: 34px; }
   .news-modal-src { font-size: 12px; color: var(--text-3); }
@@ -2465,10 +2465,7 @@ setInterval(()=>{ if(dataMode==='live'){ loadAllQuotes(); if(current && !current
 setInterval(()=>{ if(dataMode==='live') refreshGold(); }, 1000);
 // 可拖拽分栏
 initResizers();
-// 新闻弹窗交互
-$('newsModalClose')&&($('newsModalClose').onclick=closeNews);
-$('newsModalMask')&&($('newsModalMask').onclick=closeNews);
-$('newsLightbox')&&($('newsLightbox').onclick=hideLightbox);
+// 新闻弹窗交互：关闭/遮罩/放大图均通过 HTML 内联 onclick 绑定（弹窗 DOM 在脚本之后解析，初始化时取不到元素，故不走 JS 绑定）
 document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ if(!$('newsLightbox').hidden) hideLightbox(); else if(!$('newsModal').hidden) closeNews(); } });
 
 /* =========================================================
@@ -2508,9 +2505,9 @@ WBSync.init();
 
 <!-- 新闻详情弹窗 -->
 <div class="news-modal" id="newsModal" hidden>
-  <div class="news-modal-mask" id="newsModalMask"></div>
+  <div class="news-modal-mask" id="newsModalMask" onclick="closeNews()"></div>
   <div class="news-modal-card" role="dialog" aria-modal="true">
-    <button class="news-modal-close" id="newsModalClose" title="关闭">×</button>
+    <button class="news-modal-close" id="newsModalClose" title="关闭" onclick="closeNews()">×</button>
     <div class="news-modal-head">
       <span class="news-tag" id="nmTag">快讯</span>
       <span class="news-modal-src" id="nmSrc"></span>
@@ -2526,7 +2523,7 @@ WBSync.init();
   </div>
 </div>
 <!-- 大图预览 -->
-<div class="news-lightbox" id="newsLightbox" hidden>
+<div class="news-lightbox" id="newsLightbox" hidden onclick="hideLightbox()">
   <img id="newsLightboxImg" alt="大图预览">
 </div>
 
