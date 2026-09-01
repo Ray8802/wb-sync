@@ -1952,7 +1952,7 @@ function openNews(i){
   $('nmTime').textContent=(n.date||'')+' '+(n.time||'');
   $('nmBody').textContent=n.text||'';
   const imgWrap=$('nmImgWrap'), img=$('nmImg');
-  if(n.img){ img.src=n.img; imgWrap.hidden=false; img.onclick=()=>showLightbox(n.img); }
+  if(n.img && typeof n.img==='string' && /^https?:/.test(n.img)){ img.src=n.img; imgWrap.hidden=false; img.onclick=()=>showLightbox(n.img); }
   else { imgWrap.hidden=true; }
   const url=$('nmUrl');
   if(n.url){ url.href=n.url; url.hidden=false; } else url.hidden=true;
