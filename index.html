@@ -140,9 +140,9 @@
   .layout {
     flex: 1;
     display: grid;
-    grid-template-columns: 300px minmax(0, 1fr) 360px;
-    gap: var(--space-4);
-    padding: var(--space-4) var(--space-4) var(--space-6);
+    grid-template-columns: 264px minmax(0, 1fr) 312px;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-3) var(--space-5);
     max-width: 100%; width: 100%; margin: 0 auto;
     align-items: start;
   }
@@ -939,16 +939,22 @@ const MarketAPI = {
   // ── 行情主通道：腾讯 qt.gtimg.cn（fetch + GBK 解码，支持批量，页内实测可用）──
   _tencent(items, cb){
     try{
-      // 前缀：6/5/9 开头=沪市(sh)，0/1/3 开头=深市(sz)。注意 1 开头的 15/16/18 是深市基金！
-      const pref=code=>/^(6|5|9)/.test(code)?'sh':'sz';
-      const q=items.map(i=>pref(i.code)+i.code).join(',');
+      // 腾讯代码：港股(116.)用 hk 前缀；韩股(177.)腾讯无覆盖返回 null；其余按代码前位 sh/sz
+      const txc=it=>{
+        const s=it.secid||'';
+        if(s.indexOf('177.')===0) return null;
+        if(s.indexOf('116.')===0) return 'hk'+(it.code||'');
+        const code=it.code||'';
+        return /^(6|5|9)/.test(code)?'sh'+code:'sz'+code;
+      };
+      const q=items.map(i=>txc(i)).filter(Boolean).join(',');
       fetch('https://qt.gtimg.cn/q='+q+'&_t='+Date.now(),{signal:AbortSignal.timeout(10000)})
         .then(r=>r.arrayBuffer())
         .then(buf=>{
           const text=new TextDecoder('gbk').decode(buf);
           const out={};
           items.forEach(it=>{
-            const m=text.match(new RegExp('v_'+pref(it.code)+it.code+'=\\\"([^\\\"]*)\\\"'));
+            const m=text.match(new RegExp('v_'+txc(it)+'=\\\"([^\\\"]*)\\\"'));
             if(m){
               const p=m[1].split('~');
               out[it.secid]={ name:p[1], price:+p[3]||0, prev:+p[4]||0, open:+p[5]||0, high:+p[33]||0, low:+p[34]||0,
@@ -975,26 +981,18 @@ const MarketAPI = {
       cb(out);
     }).catch(()=>cb(null));
   },
-  // 先腾讯（快、批量）→ 未拿到的（港股/韩股等）走 /api/quote 东财代理兜底
+  // 先腾讯（快、批量）→ 腾讯未覆盖的（港股/韩股等）直连东方财富 push2（支持 CORS，浏览器可跨域，无需代理）
   fetchQuotes(items, cb){
     if(!items.length){ cb({}); return; }
     this._tencent(items,(out)=>{
+      out = out || {};
       const missed=items.filter(it=>!out || out[it.secid]==null);
       if(!missed.length){ cb(out); return; }
-      fetch('/api/quote?secid='+encodeURIComponent(missed.map(i=>i.secid).join(',')),{signal:AbortSignal.timeout(15000)})
-        .then(r=>r.json())
-        .then(j=>{
-          const q=(j&&j.quotes)||{};
-          missed.forEach(it=>{
-            const d=q[it.secid];
-            if(d && d.price!=null){
-              out[it.secid]={ name:d.name, price:d.price, prev:d.prev||0, open:d.open||0, high:d.high||0, low:d.low||0,
-                vol:0, amount:0, pe:null, pb:null, cap:0, turn:0, chgPct:d.chgPct };
-            }
-          });
-          cb(out);
-        })
-        .catch(()=>cb(out));
+      this._eastmoney(missed,(em)=>{              // 东财 push2 浏览器直连，绕开被封锁的 Pages 代理
+        em = em || {};
+        missed.forEach(it=>{ if(em[it.secid]) out[it.secid]=em[it.secid]; });
+        cb(out);
+      });
     });
   },
   async kline(secid, klt, lmt=240){
@@ -1444,20 +1442,27 @@ function loadMinutes(){
   if(dataMode!=='live') return;
   if(Date.now()-lastMinuteAt<240000) return;      // 4 分钟节流
   lastMinuteAt=Date.now();
-  const pref=c=>/^(6|5|9)/.test(String(c))?'sh':'sz';
-  const list=STOCKS.filter(s=>/^\d{6}$/.test(String(s.code||''))).slice(0,20);
+  const list=STOCKS.slice(0,24);
   Promise.all(list.map(s=>{
-    const q=pref(s.code)+s.code;
-    return fetch('https://web.ifzq.gtimg.cn/appstock/app/minute/query?code='+q,{signal:AbortSignal.timeout(9000)})
-      .then(r=>r.json())
-      .then(j=>{
-        const d=j&&j.data&&j.data[q]&&j.data[q].data;
-        const arr=(d&&d.data)||[];
-        const prices=[];
-        arr.forEach(x=>{ const p=parseFloat(String(x).split(/\s+/)[1]); if(!isNaN(p)) prices.push(p); });
-        if(prices.length>1){ s.spark=prices; s.minuteDate=d.date; }   // 真实分时
-      })
-      .catch(()=>{});
+    const secid=s.secid||secidOf(s.code);
+    const sfx=String(secid||'');
+    // A股 → 腾讯 ifzq（快、无 CORS 限制）；港股/韩股 → 东财 trends2 直连（支持 CORS）
+    if(/^(1\.|0\.)/.test(sfx)){
+      const q=/^(6|5|9)/.test(String(s.code))?'sh'+s.code:'sz'+s.code;
+      return fetch('https://web.ifzq.gtimg.cn/appstock/app/minute/query?code='+q,{signal:AbortSignal.timeout(9000)})
+        .then(r=>r.json()).then(j=>{
+          const d=j&&j.data&&j.data[q]&&j.data[q].data; const arr=(d&&d.data)||[];
+          const prices=[]; arr.forEach(x=>{ const p=parseFloat(String(x).split(/\s+/)[1]); if(!isNaN(p)) prices.push(p); });
+          if(prices.length>1){ s.spark=prices; s.minuteDate=d&&d.date; }   // 真实分时（A股）
+        }).catch(()=>{});
+    } else {
+      return fetch('https://push2his.eastmoney.com/api/qt/stock/trends2/get?secid='+encodeURIComponent(secid)+'&fields1=f1,f2,f3,f7&fields2=f51,f52,f53,f54,f55,f56,f57,f58&iscr=0&ndays=1',{headers:{'Referer':'https://quote.eastmoney.com/'},signal:AbortSignal.timeout(9000)})
+        .then(r=>r.json()).then(j=>{
+          const tr=(j&&j.data&&j.data.trends)||[];
+          const prices=tr.map(t=>{ const p=String(t).split(','); return +p[1]; }).filter(n=>!isNaN(n));
+          if(prices.length>1){ s.spark=prices; s.minuteDate=(j.data&&j.data.date)||''; }   // 真实分时（港股/韩股）
+        }).catch(()=>{});
+    }
   })).then(()=>{
     const g=activeGrp(); if(g!=='news') renderWatchlist(g);
   });
