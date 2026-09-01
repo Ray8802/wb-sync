@@ -10,7 +10,7 @@ export async function onRequestGet() {
     const r = await fetch('https://np-listapi.eastmoney.com/comm/web/getFastNewsList?client=web&biz=web_724&fastColumn=102&sortEnd=&pageSize=30&req_trace=1', { signal: AbortSignal.timeout(10000), headers: { 'User-Agent': 'Mozilla/5.0' } });
     const j = await r.json();
     const list = (j && j.data && j.data.fastNewsList) || [];
-    return list.filter(x => x && x.summary).map(x => ({ src: 'em', id: 'em' + x.code, text: pick(x.summary), time: (x.showTime || '').slice(11, 16), date: (x.showTime || '').slice(0, 10), tag: '快讯', url: '', important: false, img: (x.image || x.pic || '') }));
+    return list.filter(x => x && x.summary).map(x => ({ src: 'em', id: 'em' + x.code, text: pick(x.summary), time: (x.showTime || '').slice(11, 16), date: (x.showTime || '').slice(0, 10), tag: '快讯', url: '', important: false, img: (Array.isArray(x.image) ? (x.image[0]||'') : (x.image || x.pic || '')) }));
   }
   // 金十数据
   async function srcJin10() {
