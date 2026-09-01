@@ -205,6 +205,8 @@
   .news-refresh { border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); border-radius: 8px; font-size: 11px; padding: 4px 10px; cursor: pointer; transition: .15s; }
   .news-refresh:hover { border-color: var(--accent); color: var(--accent); }
   .news-stats { font-size: 11px; color: var(--text-3); padding: 0 6px 8px; }
+  .news-next { font-size: 11px; color: var(--text-3); padding: 4px 6px 6px; display: flex; align-items: center; gap: 4px; }
+  .news-next b { color: var(--accent); font-weight: 600; font-family: var(--mono); }
   .news-hot { color: #e5484d; }
   .news-fire { font-size: 12px; }
   .news-multi { background: #fff3e0; color: #e65100; border-radius: 4px; padding: 1px 6px; font-size: 10px; font-weight: 600; }
@@ -719,6 +721,7 @@
             <span class="news-src">财经快讯 · 三源聚合 <span class="news-live">●</span></span>
             <button class="news-refresh" id="newsRefresh">↻ 刷新</button>
           </div>
+          <div class="news-next" id="newsNext"></div>
           <div id="newsItems"></div>
           <div class="news-empty" id="newsEmpty">加载中…</div>
         </div>
@@ -1907,6 +1910,7 @@ if(goldBodyEl) goldBodyEl.onclick=()=>selectGold();
 
 // ===== 财经资讯（三源聚合 + 重大优先） =====
 let newsTimer=null;
+let newsNextAt=0;          // 下次自动刷新的时间戳（ms）
 let newsCache=[];
 const escNews=s=>String(s==null?'':s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
 const SRC_NAME={em:'东财',jin10:'金十',sina:'新浪'};
@@ -1914,8 +1918,30 @@ function showNews(){
   $('watchList').hidden=true;
   const nl=$('newsList'); nl.hidden=false;
   loadNews(false);
+  newsAutoStart();   // 进入资讯即启动/重启 5 分钟自动刷新，并刷新"下次刷新"显示
+}
+
+// 启动（或重置）资讯 5 分钟自动刷新；手动刷新也调用它，保证显示时间与真实定时器一致
+function newsAutoStart(){
   clearInterval(newsTimer);
-  newsTimer=setInterval(()=>loadNews(true), 300000);   // 5 分钟自动刷新
+  newsNextAt=Date.now()+300000;
+  newsTimer=setInterval(()=>{ loadNews(true); newsNextAt=Date.now()+300000; renderNewsNext(); }, 300000);
+  renderNewsNext();
+}
+
+function fmtClock(ts){
+  const d=new Date(ts), p=x=>String(x).padStart(2,'0');
+  return p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
+}
+
+// 把"下次自动刷新"时间渲染到状态行（每秒由独立 tick 刷新，不触发数据拉取）
+function renderNewsNext(){
+  const el=$('newsNext'); if(!el) return;
+  if(!newsNextAt){ el.innerHTML=''; return; }
+  const left=Math.max(0, newsNextAt-Date.now());
+  const m=Math.floor(left/60000), s=Math.floor((left%60000)/1000);
+  const tail=(m||s)?`（约 ${m} 分 ${s} 秒后）`:'（即将刷新）';
+  el.innerHTML='下次自动刷新 <b>'+fmtClock(newsNextAt)+'</b> '+tail;
 }
 function loadNews(silent){
   const box=$('newsItems'); const empty=$('newsEmpty');
@@ -1941,7 +1967,7 @@ function loadNews(silent){
       if(!silent){ empty.textContent='资讯加载失败：'+e.message; empty.hidden=false; }
     });
 }
-$('newsRefresh')&&($('newsRefresh').onclick=()=>loadNews(false));
+$('newsRefresh')&&($('newsRefresh').onclick=()=>{ loadNews(false); newsAutoStart(); });
 
 // ===== 新闻详情弹窗 + 大图预览 =====
 function openNews(i){
@@ -2467,6 +2493,8 @@ setInterval(()=>{ if(dataMode==='live') refreshGold(); }, 1000);
 initResizers();
 // 新闻弹窗交互：关闭/遮罩/放大图均通过 HTML 内联 onclick 绑定（弹窗 DOM 在脚本之后解析，初始化时取不到元素，故不走 JS 绑定）
 document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ if(!$('newsLightbox').hidden) hideLightbox(); else if(!$('newsModal').hidden) closeNews(); } });
+// 资讯"下次自动刷新"倒计时：每秒只更新文本，不拉数据，与自动/手动刷新互不干扰
+setInterval(renderNewsNext, 1000);
 
 /* =========================================================
    同步引擎初始化与 UI 绑定
