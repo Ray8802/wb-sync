@@ -236,6 +236,13 @@
     font-size: 18px; font-weight: 700; line-height: 1; cursor: pointer; transition: .15s;
   }
   .add-btn:hover { background: var(--accent); color: #fff; }
+  .sort-btn {
+    height: 28px; padding: 0 10px; border-radius: 8px; cursor: pointer; transition: .15s;
+    font-size: 12px; font-weight: 600; white-space: nowrap;
+    border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2);
+  }
+  .sort-btn:hover { background: var(--surface-3); color: var(--text-1); }
+  .sort-btn.active { background: var(--accent-soft); color: var(--accent); border-color: #dbe1ff; }
   .add-panel { padding: 12px 14px; border-bottom: 1px solid var(--border); background: var(--surface-2); }
   .add-row { display: grid; grid-template-columns: 1.2fr 1fr .8fr; gap: 8px; }
   .add-row input {
@@ -622,6 +629,7 @@
           <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m7 14 3-4 4 3 5-7"/></svg>
           <h2>自选股</h2>
           <span class="sub" id="watchCount">—</span>
+          <button class="sort-btn" id="sortBtn" title="按涨跌幅排序（点击切换 默认/降序/升序）">涨跌幅 ⇅</button>
           <button class="add-btn" id="addBtn" title="添加自选股">＋</button>
         </div>
         <div class="add-panel" id="addPanel" hidden>
@@ -1201,13 +1209,19 @@ function fillStockFromQuote(s, q){
   if(q.volHands) s.volHands=q.volHands;
   if(q.price!=null){ s.spark.push(q.price); if(s.spark.length>30) s.spark.shift(); }
 }
+let watchSort='none';   // 自选股涨跌幅排序：none | chgDesc | chgAsc
 function renderWatchlist(group='all'){
   if(group==='news') return showNews();
   if($('newsList')) $('newsList').hidden=true;
   if($('watchList')) $('watchList').hidden=false;
   const list=$('watchList');
+  const sb=$('sortBtn');
+  if(sb){ sb.classList.toggle('active', watchSort!=='none'); sb.textContent = watchSort==='none'?'涨跌幅 ⇅' : watchSort==='chgDesc'?'涨幅 ↓':'涨幅 ↑'; }
   let arr=[...STOCKS];
-  if(group==='up') arr.sort((a,b)=>b.price/b.prev - a.price/a.prev);
+  if(watchSort!=='none'){
+    const chgPct=s=>(s.prev? (s.price-s.prev)/s.prev : 0);
+    arr.sort((a,b)=> watchSort==='chgDesc' ? chgPct(b)-chgPct(a) : chgPct(a)-chgPct(b));
+  }
   if(group==='hold') arr=arr.filter(s=>s.held>0);
   $('watchCount').textContent = arr.length + ' 只';
   if(arr.length===0){ list.innerHTML=`<div class="empty-tip">暂无股票，点击右上角 ＋ 添加自选股</div>`; return; }
@@ -1569,6 +1583,11 @@ function makeStockFromIndex(it){
    交互绑定
    ========================================================= */
 document.querySelectorAll('.watch-tab').forEach(t=>{ t.onclick=()=>{ document.querySelectorAll('.watch-tab').forEach(x=>x.classList.remove('active')); t.classList.add('active'); renderWatchlist(t.dataset.grp); }; });
+const sortBtn=$('sortBtn');
+if(sortBtn) sortBtn.onclick=()=>{
+  watchSort = watchSort==='none' ? 'chgDesc' : watchSort==='chgDesc' ? 'chgAsc' : 'none';
+  renderWatchlist(activeGrp());
+};
 
 // ===== 财经资讯（三源聚合 + 重大优先） =====
 let newsTimer=null;
