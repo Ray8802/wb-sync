@@ -217,6 +217,23 @@
   .news-item.open .news-text { -webkit-line-clamp: unset; }
   .news-empty { color: var(--text-3); font-size: 13px; text-align: center; padding: 30px 0; }
   .news-link { margin-left: auto; color: var(--accent); font-size: 11px; }
+  /* 新闻详情弹窗 + 大图预览 */
+  .news-modal, .news-lightbox { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center; padding: 16px; }
+  .news-modal[hidden], .news-lightbox[hidden] { display: none; }
+  .news-modal-mask { position: absolute; inset: 0; background: rgba(15,18,28,.5); backdrop-filter: blur(2px); }
+  .news-modal-card { position: relative; z-index: 1; width: min(580px, 94vw); max-height: 86vh; overflow: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 22px 24px; box-shadow: 0 24px 70px rgba(0,0,0,.35); }
+  .news-modal-close { position: absolute; top: 12px; right: 14px; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2); font-size: 18px; line-height: 1; cursor: pointer; }
+  .news-modal-close:hover { border-color: var(--accent); color: var(--accent); }
+  .news-modal-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; padding-right: 34px; }
+  .news-modal-src { font-size: 12px; color: var(--text-3); }
+  .news-modal-time { font-size: 12px; color: var(--text-3); margin-left: auto; }
+  .news-modal-body { font-size: 15px; line-height: 1.85; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; }
+  .news-modal-imgwrap { margin-top: 16px; }
+  .news-modal-img { width: 100%; border-radius: 12px; cursor: zoom-in; display: block; }
+  .news-modal-foot { margin-top: 16px; }
+  .news-lightbox { background: rgba(0,0,0,.88); z-index: 1100; cursor: zoom-out; }
+  .news-lightbox img { max-width: 94vw; max-height: 92vh; border-radius: 8px; }
+  body.modal-open { overflow: hidden; }
 
   .watch-scroll { max-height: calc(100vh - 320px); overflow-y: auto; overflow-x: hidden; padding: 6px; min-width: 0; }
   .watch-scroll::-webkit-scrollbar { width: 6px; }
@@ -1890,6 +1907,7 @@ if(goldBodyEl) goldBodyEl.onclick=()=>selectGold();
 
 // ===== 财经资讯（三源聚合 + 重大优先） =====
 let newsTimer=null;
+let newsCache=[];
 const escNews=s=>String(s==null?'':s).replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]));
 const SRC_NAME={em:'东财',jin10:'金十',sina:'新浪'};
 function showNews(){
@@ -1907,13 +1925,14 @@ function loadNews(silent){
     .then(j=>{
       if(!j.ok||!j.items) throw new Error(j.error||'数据为空');
       empty.hidden=true;
+      newsCache=j.items;
       const hot=j.items.filter(x=>x.score>=3).length;
       box.innerHTML=`<div class="news-stats">共 ${j.items.length} 条 · 三源综合（东财${j.stats?.em||0} / 金十${j.stats?.jin10||0} / 新浪${j.stats?.sina||0}）· <b class="news-hot">🔥 重大 ${hot} 条</b></div>`+
-      j.items.map(n=>{
+      j.items.map((n,idx)=>{
         const srcs=n.src.split('+').map(s=>SRC_NAME[s]||s).join(' / ');
         const fire=n.score>=3?'<span class="news-fire">🔥</span>':'';
         const multi=n.n>=2?'<span class="news-multi">多源</span>':'';
-        return `<div class="news-item" onclick="this.classList.toggle('open')">
+        return `<div class="news-item" data-i="${idx}" onclick="openNews(${idx})">
         <div class="news-meta"><span class="news-tag">${escNews(n.tag||'快讯')}</span><span>${escNews(n.date||'')} ${escNews(n.time||'')}</span>${multi}${fire}<span class="news-srcmark">${escNews(srcs)}</span>${n.url?`<a class="news-link" href="${escNews(n.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">原文 ↗</a>`:''}</div>
         <div class="news-text">${escNews(n.text)}</div></div>`;
       }).join('');
@@ -1923,6 +1942,26 @@ function loadNews(silent){
     });
 }
 $('newsRefresh')&&($('newsRefresh').onclick=()=>loadNews(false));
+
+// ===== 新闻详情弹窗 + 大图预览 =====
+function openNews(i){
+  const n=newsCache[i]; if(!n) return;
+  $('nmTag').textContent=n.tag||'快讯';
+  const srcs=(n.src||'').split('+').map(s=>SRC_NAME[s]||s).join(' / ');
+  $('nmSrc').textContent=srcs + (n.n>=2?` · 多源${n.n}`:'');
+  $('nmTime').textContent=(n.date||'')+' '+(n.time||'');
+  $('nmBody').textContent=n.text||'';
+  const imgWrap=$('nmImgWrap'), img=$('nmImg');
+  if(n.img){ img.src=n.img; imgWrap.hidden=false; img.onclick=()=>showLightbox(n.img); }
+  else { imgWrap.hidden=true; }
+  const url=$('nmUrl');
+  if(n.url){ url.href=n.url; url.hidden=false; } else url.hidden=true;
+  $('newsModal').hidden=false;
+  document.body.classList.add('modal-open');
+}
+function closeNews(){ $('newsModal').hidden=true; document.body.classList.remove('modal-open'); hideLightbox(); }
+function showLightbox(src){ const lb=$('newsLightbox'); $('newsLightboxImg').src=src; lb.hidden=false; }
+function hideLightbox(){ $('newsLightbox').hidden=true; }
 
 document.querySelectorAll('.chart-tab').forEach(t=>{
   t.onclick=()=>{
@@ -2426,6 +2465,11 @@ setInterval(()=>{ if(dataMode==='live'){ loadAllQuotes(); if(current && !current
 setInterval(()=>{ if(dataMode==='live') refreshGold(); }, 1000);
 // 可拖拽分栏
 initResizers();
+// 新闻弹窗交互
+$('newsModalClose')&&($('newsModalClose').onclick=closeNews);
+$('newsModalMask')&&($('newsModalMask').onclick=closeNews);
+$('newsLightbox')&&($('newsLightbox').onclick=hideLightbox);
+document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ if(!$('newsLightbox').hidden) hideLightbox(); else if(!$('newsModal').hidden) closeNews(); } });
 
 /* =========================================================
    同步引擎初始化与 UI 绑定
@@ -2461,5 +2505,30 @@ WBSync.init();
 })();
 
 </script>
+
+<!-- 新闻详情弹窗 -->
+<div class="news-modal" id="newsModal" hidden>
+  <div class="news-modal-mask" id="newsModalMask"></div>
+  <div class="news-modal-card" role="dialog" aria-modal="true">
+    <button class="news-modal-close" id="newsModalClose" title="关闭">×</button>
+    <div class="news-modal-head">
+      <span class="news-tag" id="nmTag">快讯</span>
+      <span class="news-modal-src" id="nmSrc"></span>
+      <span class="news-modal-time" id="nmTime"></span>
+    </div>
+    <div class="news-modal-body" id="nmBody"></div>
+    <div class="news-modal-imgwrap" id="nmImgWrap" hidden>
+      <img class="news-modal-img" id="nmImg" alt="新闻配图">
+    </div>
+    <div class="news-modal-foot">
+      <a class="news-link" id="nmUrl" target="_blank" rel="noopener">查看原文 ↗</a>
+    </div>
+  </div>
+</div>
+<!-- 大图预览 -->
+<div class="news-lightbox" id="newsLightbox" hidden>
+  <img id="newsLightboxImg" alt="大图预览">
+</div>
+
 </body>
 </html>
