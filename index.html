@@ -2070,7 +2070,7 @@ setLive('loading');
 ensureIndex();
 if(dataMode==='live'){ loadAllQuotes(); loadQuoteFor(current); }
 // 定时刷新
-setInterval(()=>{ if(dataMode==='live'){ loadAllQuotes(); if(current) loadQuoteFor(current); } }, 8000);
+setInterval(()=>{ if(dataMode==='live'){ loadAllQuotes(); if(current) loadQuoteFor(current); } }, 2000);
 
 /* =========================================================
    同步引擎初始化与 UI 绑定
