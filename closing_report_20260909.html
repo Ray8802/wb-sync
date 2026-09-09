@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>收盘财报</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+body { margin:0; background:#f5f6f7; color:#1f2329;
+  font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+.wrap { max-width:840px; margin:0 auto; padding:12px; }
+header { background:linear-gradient(135deg,#d93026,#b3271e); color:#fff;
+  border-radius:14px; padding:16px 18px; box-shadow:0 4px 14px rgba(217,48,38,.25); }
+header h1 { margin:0; font-size:19px; font-weight:800; letter-spacing:.5px; }
+header p { margin:6px 0 0; font-size:12px; opacity:.92; line-height:1.5; }
+section { background:#fff; border-radius:14px; padding:14px 14px 16px; margin:12px 0;
+  box-shadow:0 2px 10px rgba(0,0,0,.05); }
+h2 { font-size:15px; margin:0 0 10px; padding-left:9px; border-left:4px solid #d93026;
+  color:#1f2329; font-weight:700; }
+h2.blue { border-left-color:#2f6fed; }
+.kpis { display:flex; flex-wrap:wrap; gap:8px; margin:6px 0 12px; }
+.kpi { flex:1 1 28%; min-width:90px; background:#fafafa; border:1px solid #f0f1f3;
+  border-radius:10px; padding:9px 10px; text-align:center; }
+.kpi .v { font-size:18px; font-weight:800; }
+.kpi .l { font-size:11px; color:#646a73; margin-top:2px; }
+.chart-box { position:relative; width:100%; height:300px; margin:6px 0; }
+.chart-box.tall { height:460px; }
+.chart-box.sm { height:240px; }
+.split { display:flex; flex-wrap:wrap; gap:12px; }
+.split > div { flex:1 1 46%; min-width:260px; }
+.note { font-size:12px; color:#5f6368; line-height:1.7; margin:6px 0; }
+.judge { display:inline-block; font-size:13px; font-weight:700; padding:3px 10px;
+  border-radius:20px; color:#fff; }
+.badge { display:inline-block; color:#fff; font-size:10px; padding:1px 6px;
+  border-radius:3px; margin-right:4px; }
+.card { border-radius:10px; padding:10px 12px; margin:9px 0; }
+.card.news { background:#fff8e1; border-left:4px solid #f5a623; }
+.card.sec { background:#eef4ff; border-left:4px solid #2f6fed; }
+.card.risk { background:#fde8e8; border-left:4px solid #d93026; }
+.card .ct { margin:0 0 4px; font-size:13px; line-height:1.6; color:#333; }
+.card .meta { font-size:11px; color:#888; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.card .senti { font-weight:700; }
+.chip { display:inline-block; margin:3px 8px 3px 0; font-size:13px; }
+.chip b { font-weight:700; }
+table.lvl { border-collapse:collapse; width:100%; font-size:12px; margin-top:6px; }
+table.lvl td { border:1px solid #eef0f2; padding:4px 6px; }
+ul.watch { margin:6px 0 0; padding-left:18px; }
+ul.watch li { font-size:13px; line-height:1.8; color:#444; }
+.tipbox { font-size:13px; line-height:1.8; border-radius:10px; padding:9px 12px; margin-top:8px; }
+.tipbox.amber { background:#fff8e1; border-left:4px solid #f5a623; }
+.tipbox.green { background:#eaf3de; border-left:4px solid #18a058; }
+.foot { color:#9aa0a6; font-size:11px; text-align:center; padding:14px 0 6px;
+  border-top:1px solid #f0f1f3; margin-top:8px; }
+.muted { color:#9aa0a6; font-size:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1 id="h-title">📊 收盘财报（图表版）</h1>
+  <p id="h-sub">数据时效：A股/ETF/LOF/港股/韩股收盘 ｜ 新闻源：金十数据 / 财联社 / 东方财富</p>
+</header>
+
+<section>
+  <h2>一、大盘概况</h2>
+  <div class="kpis" id="kpis"></div>
+  <div class="split">
+    <div>
+      <div class="chart-box"><canvas id="idxChart"></canvas></div>
+      <p class="muted">指数涨跌幅（红涨绿跌）</p>
+    </div>
+    <div>
+      <div class="chart-box sm"><canvas id="breadthChart"></canvas></div>
+      <p class="muted">全市场涨跌家数分布</p>
+    </div>
+  </div>
+  <div class="split">
+    <div>
+      <div class="chart-box sm"><canvas id="limitChart"></canvas></div>
+      <p class="muted">涨停 / 跌停家数</p>
+    </div>
+    <div>
+      <div class="chart-box sm"><canvas id="externalChart"></canvas></div>
+      <p class="muted">外盘联动（隔夜）</p>
+    </div>
+  </div>
+  <p class="note" id="market-note"></p>
+</section>
+
+<section>
+  <h2>二、资金面与情绪</h2>
+  <div class="kpis" id="mood-kpis"></div>
+  <div class="chart-box"><canvas id="sectorChart"></canvas></div>
+  <p class="muted">持仓板块主力资金净流入（红=流入 / 绿=流出，单位：亿）</p>
+</section>
+
+<section>
+  <h2>三、自选股 15 只收盘</h2>
+  <div class="split">
+    <div>
+      <div class="chart-box tall"><canvas id="quoteChart"></canvas></div>
+      <p class="muted">涨跌幅（悬停看现价/主力净流入）</p>
+    </div>
+    <div>
+      <div class="chart-box tall"><canvas id="vsChart"></canvas></div>
+      <p class="muted">相对上证指数强弱</p>
+    </div>
+  </div>
+  <div class="split">
+    <div>
+      <div class="chart-box sm"><canvas id="holdChart"></canvas></div>
+      <p class="muted">自选股涨跌分布</p>
+    </div>
+    <div>
+      <div class="chart-box sm"><canvas id="techChart"></canvas></div>
+      <p class="muted">技术信号概览</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="blue">四、风险事件预警（利空）</h2>
+  <div id="risk-box"></div>
+</section>
+
+<section>
+  <h2>五、自选股重大新闻</h2>
+  <div id="news-box"></div>
+</section>
+
+<section>
+  <h2 class="blue">六、持仓板块要闻</h2>
+  <div id="sec-news-box"></div>
+</section>
+
+<section>
+  <h2>七、明日关注与关键价位</h2>
+  <p class="note" style="font-weight:700;color:#1f2329;">7.1 异动标的</p>
+  <div id="movers-box"></div>
+  <p class="note" style="font-weight:700;color:#1f2329;">7.2 关键价位（压力 / 支撑）</p>
+  <table class="lvl" id="lvl-table"></table>
+  <p class="note" style="font-weight:700;color:#1f2329;">7.3 明日日历 / 延续观察</p>
+  <ul class="watch" id="watch-list"></ul>
+  <div class="tipbox amber" id="judge-box"></div>
+  <div class="tipbox green" id="review-box"></div>
+</section>
+
+<div class="foot">本报表由系统自动生成，数据来自公开实时源，仅供个人复盘参考，不构成投资建议。</div>
+</div>
+
+<script>window.REPORT_DATA = {"date": "2026-09-09", "indices": [{"name": "上证指数", "val": "3940.55", "chg": 0.2}, {"name": "深证成指", "val": "13703.21", "chg": -0.52}, {"name": "创业板指", "val": "3359.72", "chg": -1.15}, {"name": "科创50", "val": "1591.00", "chg": -1.52}, {"name": "北证50", "val": "1086.25", "chg": -0.97}], "market": {"up": 3257, "down": 1859, "flat": 93, "limit_up": 85, "limit_down": 5, "amount": 19601.4, "prev_amount": null, "main_net_total": -81.91, "summary": "两市成交 19601 亿（沪深A股）；涨 3257 / 跌 1859（平 93），涨停 85 / 跌停 5；主力净流出 82 亿（北向资金自2024-08起暂停披露，以主力资金替代）。领涨：粮食种植 +7.80%；房产租赁经纪 +7.53%；磷肥及磷化工 +7.01%；领跌：半导体设备 -1.96%；涂料 -2.55%；视频媒体 -6.70%。", "lianban": "待抓取", "judge": {"label": "偏稳·观察", "color": "#d93026", "reasons": "涨多跌少；成交额对比待抓取；涨停占优；主力流出收窄"}}, "external": [{"name": "道琼斯", "chg": -0.51}, {"name": "纳斯达克", "chg": -0.29}, {"name": "恒生指数", "chg": -0.38}, {"name": "韩元兑美元", "chg": 0.17}, {"name": "WTI原油", "chg": 1.64}], "quotes": [{"name": "卫星ETF永赢", "code": "159206", "price": 1.35, "chg": -0.3, "amount_str": "2.82 亿", "main_net_str": "+3562 万", "high": 1.371, "low": 1.343, "amplitude": 2.07, "type": "ETF", "currency": "CNY", "tech": "区间震荡", "vs_diff": -0.5, "vs_word": "跑输"}, {"name": "智能驾驶ETF华泰柏瑞", "code": "516520", "price": 1.041, "chg": -0.29, "amount_str": "0.17 亿", "main_net_str": "-202 万", "high": 1.048, "low": 1.036, "amplitude": 1.15, "type": "ETF", "currency": "CNY", "tech": "区间震荡", "vs_diff": -0.49, "vs_word": "跑输"}, {"name": "传媒ETF广发", "code": "512980", "price": 0.868, "chg": 0, "amount_str": "3.50 亿", "main_net_str": "+399 万", "high": 0.882, "low": 0.856, "amplitude": 3.0, "type": "ETF", "currency": "CNY", "tech": "高波动震荡", "vs_diff": -0.2, "vs_word": "跑输"}, {"name": "国投白银LOF", "code": "161226", "price": 1.946, "chg": 0.26, "amount_str": "1.60 亿", "main_net_str": "-444 万", "high": 1.963, "low": 1.937, "amplitude": 1.34, "type": "LOF", "currency": "CNY", "tech": "区间震荡", "vs_diff": 0.06, "vs_word": "跑赢"}, {"name": "黄金ETF博时", "code": "159937", "price": 9.029, "chg": 0.29, "amount_str": "9.81 亿", "main_net_str": "-1347 万", "high": 9.103, "low": 9.017, "amplitude": 0.96, "type": "ETF", "currency": "CNY", "tech": "区间震荡", "vs_diff": 0.09, "vs_word": "跑赢"}, {"name": "岩山科技", "code": "002195", "price": 6.33, "chg": 0.32, "amount_str": "4.25 亿", "main_net_str": "-718 万", "high": 6.4, "low": 6.27, "amplitude": 2.06, "type": "股票", "currency": "CNY", "tech": "区间震荡", "vs_diff": 0.12, "vs_word": "跑赢"}, {"name": "中韩半导体ETF华泰柏瑞", "code": "513310", "price": 4.865, "chg": 0.48, "amount_str": "161.49 亿", "main_net_str": "-1.74 亿", "high": 5.023, "low": 4.837, "amplitude": 3.84, "type": "ETF", "currency": "CNY", "tech": "高波动震荡", "vs_diff": 0.28, "vs_word": "跑赢"}, {"name": "SK海力士", "code": "000660", "price": 1793000.0, "chg": 0.56, "amount_str": "—", "main_net_str": "—", "high": 1889000.0, "low": 1777000.0, "amplitude": 6.28, "type": "股票", "currency": "KRW", "tech": "高波动震荡", "vs_diff": 0.36, "vs_word": "跑赢"}, {"name": "北方稀土", "code": "600111", "price": 39.04, "chg": 0.62, "amount_str": "10.84 亿", "main_net_str": "-5403 万", "high": 39.23, "low": 38.7, "amplitude": 1.37, "type": "股票", "currency": "CNY", "tech": "区间震荡", "vs_diff": 0.42, "vs_word": "跑赢"}, {"name": "有色金属ETF南方", "code": "512400", "price": 1.901, "chg": 1.55, "amount_str": "9.58 亿", "main_net_str": "+1022 万", "high": 1.918, "low": 1.888, "amplitude": 1.6, "type": "ETF", "currency": "CNY", "tech": "区间震荡", "vs_diff": 1.35, "vs_word": "跑赢"}, {"name": "南方东英SK海力士", "code": "07709", "price": 41.7, "chg": 1.56, "amount_str": "93.82 亿", "main_net_str": "—", "high": 46.34, "low": 41.38, "amplitude": 12.08, "type": "股票", "currency": "HKD", "tech": "高波动震荡", "vs_diff": 1.36, "vs_word": "跑赢"}, {"name": "军工龙头ETF富国", "code": "512710", "price": 0.645, "chg": 2.06, "amount_str": "3.21 亿", "main_net_str": "+3609 万", "high": 0.645, "low": 0.629, "amplitude": 2.53, "type": "ETF", "currency": "CNY", "tech": "突破/收高位", "vs_diff": 1.86, "vs_word": "跑赢"}, {"name": "中国一重", "code": "601106", "price": 3.08, "chg": 2.33, "amount_str": "2.00 亿", "main_net_str": "+1485 万", "high": 3.09, "low": 3.01, "amplitude": 2.66, "type": "股票", "currency": "CNY", "tech": "区间震荡", "vs_diff": 2.13, "vs_word": "跑赢"}, {"name": "长城军工", "code": "601606", "price": 35.2, "chg": 3.8, "amount_str": "18.36 亿", "main_net_str": "+5635 万", "high": 35.5, "low": 33.45, "amplitude": 6.05, "type": "股票", "currency": "CNY", "tech": "高波动震荡", "vs_diff": 3.6, "vs_word": "跑赢"}, {"name": "原油LOF易方达", "code": "161129", "price": 1.951, "chg": 3.94, "amount_str": "16.05 亿", "main_net_str": "+1266 万", "high": 1.973, "low": 1.862, "amplitude": 5.91, "type": "LOF", "currency": "CNY", "tech": "高波动震荡", "vs_diff": 3.74, "vs_word": "跑赢"}], "breadth": {"up": 12, "down": 2, "flat": 1}, "limit_up_names": [], "limit_dn_names": [], "sector_flow": [{"sector": "半导体/存储", "val": -1.74}, {"sector": "稀土/有色", "val": -0.48}, {"sector": "贵金属", "val": -0.18}, {"sector": "脑机接口/AI", "val": -0.07}, {"sector": "智能驾驶", "val": -0.02}, {"sector": "传媒/短剧", "val": 0.04}, {"sector": "原油/商品", "val": 0.13}, {"sector": "卫星/商业航天", "val": 0.36}, {"sector": "军工/国防", "val": 1.07}], "tech_dist": [{"label": "突破/收高位", "val": 1, "color": "#d93026"}, {"label": "高波动震荡", "val": 6, "color": "#f5a623"}, {"label": "区间震荡", "val": 8, "color": "#9aa0a6"}], "risks": [{"key": "军工龙头ETF 512710", "content": "记者以投资者身份致电神剑股份询问情况。对方回复称，公司没有掌握涉及的内幕交易具体标的、发生时间等细节。目前吴德清还在正常履职，对公司的影响需等到立案有后续进展后才能作进一步评估。", "time": "2026-09-08 09:57:38", "srcs": ["东方财富"], "senti": "利空", "scol": "#0f9d58"}], "stocks_news": [{"name": "岩山科技 002195", "items": [{"time": "2026-09-08 14:58:37", "srcs": ["东方财富"], "content": "第二十二届上海国际汽车工业展览会（简称“2027上海车展”）新闻发布会9月8日在上海召开。记者获悉，2027上海车展将探索性地布局多个前沿赛道，推出具身智能展区，打造物理AI、高端芯片等前沿技术落地应用场景，以此丰富智能汽车的产品定义、技术架构和产业格局，着力推动世界汽车工业从“制造”向“智造”的能级跃升。", "senti": "中性", "scol": "#646a73"}]}, {"name": "北方稀土 600111", "items": [{"time": "2026-09-08 11:08:48", "srcs": ["东方财富"], "content": "9月8日，截至10：45，工业有色ETF万家(560860)跟踪指数工业有色金属主题指数上涨1.68%，个股方面，西部矿业涨超5%，洛阳钼业涨超2%，北方稀土、中国铝业等跟涨。", "senti": "利好", "scol": "#d93026"}]}, {"name": "传媒ETF 512980", "items": [{"time": "2026-09-08 13:54:33", "srcs": ["东方财富"], "content": "9月8日，前期斩获6连板的龙版传媒再度冲击7连板，盘中涨停板多次炸开，资金分歧剧烈。截至发稿，龙版传媒仍涨超9%，成交额超9亿元。", "senti": "利好", "scol": "#d93026"}, {"time": "2026-09-08 11:34:03", "srcs": ["东方财富"], "content": "9月8日，A股三大指数早盘涨跌不一，截至午间收盘，上证指数涨0.36%，深证成指涨0.05%，创业板指跌0.15%；北证50跌0.51%。沪深两市成交额约12550.19亿元，较前一个交易日放量约121.82亿元。截至午盘，全市场3463只股票上涨、1948只股票下跌，其中72只涨停、0只跌停。", "senti": "中性", "scol": "#646a73"}]}, {"name": "军工龙头ETF 512710", "items": [{"time": "2026-09-08 14:41:12", "srcs": ["东方财富"], "content": "乌克兰总统泽连斯基称，俄军今天（9月8日）凌晨对乌克兰首都基辅市和基辅州以及其他多个地区发动袭击，造成至少2人死亡、10人受伤。泽连斯基称，俄军此次袭击使用了弹道导弹、巡航导弹、反舰导弹以及喷气式无人机等多种武器，打击目标包括基辅的关键基础设施。泽连斯基敦促合作伙伴尽快向乌克兰提供拦截弹。", "senti": "中性", "scol": "#646a73"}, {"time": "2026-09-08 11:02:57", "srcs": ["东方财富"], "content": "美伊冲突时隔一月重启，美军打击伊朗拉腊克岛武器装置、伊朗向美军基地发射导弹，霍尔木兹海峡两艘超级油轮遭弹丸击中，国际油价走高：布伦特原油周中升至96美元、逼近六周高位，WTI突破86美元。", "senti": "利好", "scol": "#d93026"}]}, {"name": "卫星ETF 159206", "items": [{"time": "2026-09-08 17:00:04", "srcs": ["东方财富"], "content": "据中国自然资源报，9月4日，由自然资源部、国家数据局联合主办的全国卫星导航定位基准站网服务数据授权运营工作推进会在京举行。会上宣布，全国卫星导航定位基准站网服务数据授权运营落地。", "senti": "中性", "scol": "#646a73"}, {"time": "2026-09-08 16:51:24", "srcs": ["东方财富"], "content": "据《日本经济新闻》近日披露，日本防卫省有一项军事太空新计划，准备研发战术AI卫星，为远程导弹配备太空智能侦察系统。根据公开的研发规划，日本防卫省将联合本土军工企业，在2027年到2029年间研制战术AI卫星的实验机型，最快于2030财年进行太空在轨测试。目前，项目的研发经费已被列入日本2027年度防卫预算申请清单。", "senti": "利好", "scol": "#d93026"}]}, {"name": "芯片ETF 159937", "items": [{"time": "2026-09-08 14:17:59", "srcs": ["东方财富"], "content": "阿斯麦表示，计划与主要客户合作，开发能够生产最先进芯片制造设备的新方案，以满足英伟达等公司设计的大型数据中心芯片需求。目前ASML生产的被广泛应用的极紫外(EUV)光刻机可制造面积最大约800平方毫米的芯片，ASML即将推出的下一代“高数值孔径”EUV光刻机，能够制造出更为精细的芯片。", "senti": "中性", "scol": "#646a73"}, {"time": "2026-09-08 14:03:57", "srcs": ["东方财富"], "content": "英特尔晶圆代工与阿斯麦展开合作，加速高数值孔径极紫外光刻技术的行业落地进程。", "senti": "中性", "scol": "#646a73"}]}, {"name": "电池ETF 159216", "items": [{"time": "2026-09-08 14:55:13", "srcs": ["东方财富"], "content": "磷化工盘中走强，消息面上，厄尔尼诺叠加地缘局势，全球粮食价格上涨，推动农化产业链走强，磷肥板块活跃，此外，近日包括中国科学院院士欧阳明高在内的多位业内人士表示，未来10年磷酸铁锂电池仍将占据主流。", "senti": "利好", "scol": "#d93026"}, {"time": "2026-09-08 14:28:13", "srcs": ["东方财富"], "content": "旭升集团在9月8日召开的2026年半年度业绩说明会上表示，公司在巩固汽车轻量化主业的基础上，持续拓展储能、具身智能等新兴业务。储能方面，公司围绕储能电池外壳、散热模块外壳及结构支架等产品，持续推进北美及国内头部客户的项目开发、验证和量产交付。具身智能方面，公司已围绕执行器壳体、躯干结构件、胸腔类零部件等开展研发和客户导入，相关项目正按客户节点推进样件交付、验证及小批量或量产准备，现阶段业务规模相对较小。", "senti": "中性", "scol": "#646a73"}]}, {"name": "有色ETF 512400", "items": [{"time": "2026-09-08 12:46:16", "srcs": ["东方财富"], "content": "9月8日，A股金属铜板块行情活跃。板块异动背后，是国际铜价持续走强。8日，伦敦金属交易所（LME）铜期货价格盘中触及每吨14617美元，再度刷新历史纪录。前一交易日，伦铜刚以每吨14533美元打破今年1月创下的历史高点。短短两日内，国际铜价接连突破关口。截至目前，LME铜期货年内涨幅已超17%。", "senti": "利好", "scol": "#d93026"}, {"time": "2026-09-08 11:52:37", "srcs": ["东方财富"], "content": "企查查APP显示，近日，西安秦创难熔晶体材料有限公司成立，法定代表人为张文，注册资本为3600万元，经营范围包含：金属材料制造；有色金属铸造；金属材料销售；电子专用材料研发；高纯元素及化合物销售等。企查查股权穿透显示，该公司由西北有色金属研究院、西安西色院十号企业管理合伙企业（有限合伙）等共同持股。", "senti": "中性", "scol": "#646a73"}]}, {"name": "国投白银LOF 161226", "items": [{"time": "2026-09-08 10:15:15", "srcs": ["东方财富"], "content": "2026年9月8日早盘，工业有色ETF博时(159171)跟踪指数中证工业有色金属主题指数(H11059)强势上涨1.52%，成分股江西铜业上涨5.15%，云南铜业上涨4.64%，白银有色上涨4.00%，西部矿业，洛阳钼业等个股跟涨。", "senti": "中性", "scol": "#646a73"}, {"time": "2026-09-08 04:55:24", "srcs": ["东方财富"], "content": "纽约尾盘，现货黄金跌0.58%，报4404.30美元/盎司；现货白银跌0.06%，报66.1710美元/盎司。", "senti": "中性", "scol": "#646a73"}]}, {"name": "商品LOF 161129", "items": [{"time": "2026-09-08 14:53:43", "srcs": ["东方财富"], "content": "消息面上，WTI原油期货价格涨2.94%，报94.174美元/桶，创阶段新高；布伦特原油期货价格涨1.84%，报98.781美元/桶。截至6日，霍尔木兹海峡通航量十天内仅十艘，降至5月来最低，高盛集团表示，如果中东地区针对船舶的袭击进一步升级，油价可能上涨至每桶120美元。", "senti": "利好", "scol": "#d93026"}, {"time": "2026-09-08 14:33:49", "srcs": ["东方财富"], "content": "截至2026年9月8日14:32，石化ETF易方达（516570）上涨2.35%，报1.044元，盘中最高触及1.044元，最低1.02元，成交额达4511.7万元，交投活跃度显著提升。", "senti": "中性", "scol": "#646a73"}]}, {"name": "中韩半导体ETF 513310", "items": [{"time": "2026-09-08 11:33:45", "srcs": ["东方财富"], "content": "9月6日记者从产业链获悉，由于存储价格高企，一些PC品牌商在东南亚放宽此前严格的供应商名单，只给代工厂品牌规格，由后者自行寻找更低成本的存储物料。记者还从多位产业链人士了解到，国内的一些手机、PC品牌商也已经开始评估使用二手存储，市场上有人专门回收近三年的存储产品。", "senti": "中性", "scol": "#646a73"}, {"time": "2026-09-08 10:34:24", "srcs": ["东方财富"], "content": "存储芯片概念延续昨日反弹势头，盈新发展直线涨停，强一股份、香农芯创、普冉股份、太极实业、雅克科技等跟涨。", "senti": "利好", "scol": "#d93026"}]}, {"name": "黄金ETF 518880", "items": [{"time": "2026-09-08 14:46:44", "srcs": ["东方财富"], "content": "浦发银行发布公告称，该行将自2026年9月25日后择时停办代理上海黄金交易所个人贵金属业务，并关闭手机银行、网上银行、网点柜面等渠道的代理上海黄金交易所个人贵金属业务交易权限。关闭后，持仓客户的平仓、卖出和提货等操作权限将受到限制。为保障客户权益，建议存量持仓客户于2026年9月25日前，通过手机银行、网上银行、网点柜面等渠道，对所持有的各类合约进行卖出、平仓或提货操作。", "senti": "中性", "scol": "#646a73"}, {"time": "2026-09-08 10:35:07", "srcs": ["东方财富"], "content": "9月8日早盘，有色板块放量走强。有色矿业ETF招商（159690）标的指数涨1.56%，成份股紫金矿业、江西铜业涨幅居前。该基金年内份额扩容超416%，资金持续涌入上游资源龙头。", "senti": "利好", "scol": "#d93026"}]}, {"name": "南方东英SK海力士 07709", "items": [{"time": "2026-09-08 14:13:24", "srcs": ["东方财富"], "content": "三星计划在2028年之前将阿斯麦顶尖光刻设备用于DRAM生产。", "senti": "中性", "scol": "#646a73"}, {"time": "2026-09-08 14:12:45", "srcs": ["东方财富"], "content": "苹果公司与日本铠侠（Kioxia）签署了一项NAND闪存的长期供应协议（LTA），报告对内存市场的推测表明，这份合同的期限为三到五年，并且可能没有价格上限。这意味着，在内存价格谈判中拥有巨大议价能力的苹果公司，正将确保NAND闪存的稳定供应量置于压缩成本之上。", "senti": "中性", "scol": "#646a73"}]}, {"name": "智能驾驶ETF 516520", "items": [{"time": "2026-09-08 12:32:21", "srcs": ["东方财富"], "content": "近日，韩国济州岛Campertree（香樟树）酒店度假村携手自动驾驶企业NT1，在户外园区启用新石器自动驾驶无人配送车，为宾客运送行李与日常用品。据悉，NT1为新石器在韩国的本地合作伙伴，此次部署也是新石器无人车首次进入济州户外度假场景运营，标志着其在韩国从试点示范迈向规模化商业落地的全新阶段。", "senti": "中性", "scol": "#646a73"}]}], "sectors_news": [{"sector": "军工/国防", "items": [{"time": "2026-09-08 14:41:12", "srcs": ["东方财富"], "content": "乌克兰总统泽连斯基称，俄军今天（9月8日）凌晨对乌克兰首都基辅市和基辅州以及其他多个地区发动袭击，造成至少2人死亡、10人受伤。泽连斯基称，俄军此次袭击使用了弹道导弹、巡航导弹、反舰导弹以及喷气式无人机等多种武器，打击目标包括基辅的关键基础设施。泽连斯基敦促合作伙伴尽快向乌克兰提供拦截弹。", "senti": "中性", "scol": "#646a73"}, {"time": "2026-09-08 11:02:57", "srcs": ["东方财富"], "content": "美伊冲突时隔一月重启，美军打击伊朗拉腊克岛武器装置、伊朗向美军基地发射导弹，霍尔木兹海峡两艘超级油轮遭弹丸击中，国际油价走高：布伦特原油周中升至96美元、逼近六周高位，WTI突破86美元。", "senti": "利好", "scol": "#d93026"}]}, {"sector": "卫星/商业航天", "items": [{"time": "2026-09-08 09:57:38", "srcs": ["东方财富"], "content": "记者以投资者身份致电神剑股份询问情况。对方回复称，公司没有掌握涉及的内幕交易具体标的、发生时间等细节。目前吴德清还在正常履职，对公司的影响需等到立案有后续进展后才能作进一步评估。", "senti": "利空", "scol": "#0f9d58"}, {"time": "2026-09-08 17:00:04", "srcs": ["东方财富"], "content": "据中国自然资源报，9月4日，由自然资源部、国家数据局联合主办的全国卫星导航定位基准站网服务数据授权运营工作推进会在京举行。会上宣布，全国卫星导航定位基准站网服务数据授权运营落地。", "senti": "中性", "scol": "#646a73"}]}, {"sector": "半导体/存储", "items": [{"time": "2026-09-08 14:17:59", "srcs": ["东方财富"], "content": "阿斯麦表示，计划与主要客户合作，开发能够生产最先进芯片制造设备的新方案，以满足英伟达等公司设计的大型数据中心芯片需求。目前ASML生产的被广泛应用的极紫外(EUV)光刻机可制造面积最大约800平方毫米的芯片，ASML即将推出的下一代“高数值孔径”EUV光刻机，能够制造出更为精细的芯片。", "senti": "中性", "scol": "#646a73"}, {"time": "2026-09-08 14:13:24", "srcs": ["东方财富"], "content": "三星计划在2028年之前将阿斯麦顶尖光刻设备用于DRAM生产。", "senti": "中性", "scol": "#646a73"}]}, {"sector": "稀土/有色", "items": [{"time": "2026-09-08 14:23:48", "srcs": ["东方财富"], "content": "历时三年半，特斯拉无稀土电机落地。当地时间9月3日，特斯拉无方向盘的Cybercab在得克萨斯州奥斯汀的街道上开展公开道路测试。次日，马斯克在其社交媒体上表示，Cybercab的电机不使用稀土元素，却能保持相同续航能力。他表示，实现这一技术突破“极为不易”。", "senti": "利好", "scol": "#d93026"}, {"time": "2026-09-08 13:45:12", "srcs": ["东方财富"], "content": "截至2026年9月8日13:41，工业有色ETF易方达（159032）上涨2.03%，报0.903元，盘中最高触及0.906元，最低0.889元，成交额达1511.2万元，交投活跃度较前期明显提升。", "senti": "中性", "scol": "#646a73"}]}, {"sector": "锂电/储能", "items": [{"time": "2026-09-08 14:55:13", "srcs": ["东方财富"], "content": "磷化工盘中走强，消息面上，厄尔尼诺叠加地缘局势，全球粮食价格上涨，推动农化产业链走强，磷肥板块活跃，此外，近日包括中国科学院院士欧阳明高在内的多位业内人士表示，未来10年磷酸铁锂电池仍将占据主流。", "senti": "利好", "scol": "#d93026"}, {"time": "2026-09-08 14:28:13", "srcs": ["东方财富"], "content": "旭升集团在9月8日召开的2026年半年度业绩说明会上表示，公司在巩固汽车轻量化主业的基础上，持续拓展储能、具身智能等新兴业务。储能方面，公司围绕储能电池外壳、散热模块外壳及结构支架等产品，持续推进北美及国内头部客户的项目开发、验证和量产交付。具身智能方面，公司已围绕执行器壳体、躯干结构件、胸腔类零部件等开展研发和客户导入，相关项目正按客户节点推进样件交付、验证及小批量或量产准备，现阶段业务规模相对较小。", "senti": "中性", "scol": "#646a73"}]}, {"sector": "传媒/短剧", "items": [{"time": "2026-09-08 14:30:12", "srcs": ["东方财富"], "content": "9月8日，@旅行青蛙-中国之旅发布停运公告，表示由于IP授权合作到期，《旅行青蛙·中国之旅》将于2026年12月8日正式停止运营。2026年9月8日14时：关闭全平台下载入口，玩家将无法下载本游戏，同时停止游戏充值、新用户注册；2026年12月8日18时：正式停止游戏运营，关闭游戏服务器；游戏官网下架。届时玩家将无法通过游戏服务器登录游戏。", "senti": "中性", "scol": "#646a73"}, {"time": "2026-09-08 14:28:00", "srcs": ["东方财富"], "content": "企查查APP显示，近日，北文扶摇（沈阳）数字科技有限公司成立，经营范围包含：数字文化创意内容应用服务；数字文化创意软件开发；动漫游戏开发；剧本娱乐活动等。企查查股权穿透显示，该公司由北京文化全资持股。", "senti": "中性", "scol": "#646a73"}]}, {"sector": "贵金属", "items": [{"time": "2026-09-08 14:46:44", "srcs": ["东方财富"], "content": "浦发银行发布公告称，该行将自2026年9月25日后择时停办代理上海黄金交易所个人贵金属业务，并关闭手机银行、网上银行、网点柜面等渠道的代理上海黄金交易所个人贵金属业务交易权限。关闭后，持仓客户的平仓、卖出和提货等操作权限将受到限制。为保障客户权益，建议存量持仓客户于2026年9月25日前，通过手机银行、网上银行、网点柜面等渠道，对所持有的各类合约进行卖出、平仓或提货操作。", "senti": "中性", "scol": "#646a73"}, {"time": "2026-09-08 10:35:07", "srcs": ["东方财富"], "content": "9月8日早盘，有色板块放量走强。有色矿业ETF招商（159690）标的指数涨1.56%，成份股紫金矿业、江西铜业涨幅居前。该基金年内份额扩容超416%，资金持续涌入上游资源龙头。", "senti": "利好", "scol": "#d93026"}]}, {"sector": "原油/商品", "items": [{"time": "2026-09-08 14:53:43", "srcs": ["东方财富"], "content": "消息面上，WTI原油期货价格涨2.94%，报94.174美元/桶，创阶段新高；布伦特原油期货价格涨1.84%，报98.781美元/桶。截至6日，霍尔木兹海峡通航量十天内仅十艘，降至5月来最低，高盛集团表示，如果中东地区针对船舶的袭击进一步升级，油价可能上涨至每桶120美元。", "senti": "利好", "scol": "#d93026"}, {"time": "2026-09-08 14:33:49", "srcs": ["东方财富"], "content": "截至2026年9月8日14:32，石化ETF易方达（516570）上涨2.35%，报1.044元，盘中最高触及1.044元，最低1.02元，成交额达4511.7万元，交投活跃度显著提升。", "senti": "中性", "scol": "#646a73"}]}, {"sector": "智能驾驶", "items": [{"time": "2026-09-08 12:32:21", "srcs": ["东方财富"], "content": "近日，韩国济州岛Campertree（香樟树）酒店度假村携手自动驾驶企业NT1，在户外园区启用新石器自动驾驶无人配送车，为宾客运送行李与日常用品。据悉，NT1为新石器在韩国的本地合作伙伴，此次部署也是新石器无人车首次进入济州户外度假场景运营，标志着其在韩国从试点示范迈向规模化商业落地的全新阶段。", "senti": "中性", "scol": "#646a73"}]}, {"sector": "脑机接口/AI", "items": [{"time": "2026-09-08 14:48:39", "srcs": ["东方财富"], "content": "据松延动力消息，9月8日，松延动力正式发布通用具身智能技术品牌Scalabot。Scalabot致力于构建机器人理解世界、推演未来与自主行动的核心能力，让智能从模型走向真实世界。", "senti": "中性", "scol": "#646a73"}, {"time": "2026-09-08 14:28:13", "srcs": ["东方财富"], "content": "旭升集团在9月8日召开的2026年半年度业绩说明会上表示，公司在巩固汽车轻量化主业的基础上，持续拓展储能、具身智能等新兴业务。储能方面，公司围绕储能电池外壳、散热模块外壳及结构支架等产品，持续推进北美及国内头部客户的项目开发、验证和量产交付。具身智能方面，公司已围绕执行器壳体、躯干结构件、胸腔类零部件等开展研发和客户导入，相关项目正按客户节点推进样件交付、验证及小批量或量产准备，现阶段业务规模相对较小。", "senti": "中性", "scol": "#646a73"}]}], "tomorrow": {"movers": [{"name": "原油LOF易方达", "chg": 3.94, "tag": "活跃", "note": "短线走强，观察量能延续性"}, {"name": "长城军工", "chg": 3.8, "tag": "活跃", "note": "短线走强，观察量能延续性"}], "levels": [{"name": "原油LOF易方达", "chg": 3.94, "high": 1.973, "low": 1.862}, {"name": "长城军工", "chg": 3.8, "high": 35.5, "low": 33.45}, {"name": "中国一重", "chg": 2.33, "high": 3.09, "low": 3.01}, {"name": "军工龙头ETF富国", "chg": 2.06, "high": 0.645, "low": 0.629}, {"name": "南方东英SK海力士", "chg": 1.56, "high": 46.34, "low": 41.38}, {"name": "有色金属ETF南方", "chg": 1.55, "high": 1.918, "low": 1.888}, {"name": "北方稀土", "chg": 0.62, "high": 39.23, "low": 38.7}, {"name": "SK海力士", "chg": 0.56, "high": 1889000.0, "low": 1777000.0}, {"name": "中韩半导体ETF华泰柏瑞", "chg": 0.48, "high": 5.023, "low": 4.837}, {"name": "岩山科技", "chg": 0.32, "high": 6.4, "low": 6.27}, {"name": "黄金ETF博时", "chg": 0.29, "high": 9.103, "low": 9.017}, {"name": "国投白银LOF", "chg": 0.26, "high": 1.963, "low": 1.937}, {"name": "传媒ETF广发", "chg": 0, "high": 0.882, "low": 0.856}, {"name": "智能驾驶ETF华泰柏瑞", "chg": -0.29, "high": 1.048, "low": 1.036}, {"name": "卫星ETF永赢", "chg": -0.3, "high": 1.371, "low": 1.343}], "watch": ["脑机接口政策征求意见发酵，观察岩山科技续涨动能与换手", "军工板块连板高度与持续性（长城军工/中国一重）", "北方稀土主力净流出，观察资源股企稳信号"], "review": "今日市场震荡，自选股 12 涨 / 2 跌 / 1 平，合计主力净流出 8488 万。资金强势板块：军工/国防，资金承压板块：半导体/存储，分化明显。", "position": "保持现有仓位观察，按关键价位做加减仓", "judge": {"label": "偏稳·观察", "color": "#d93026", "reasons": "涨多跌少；成交额对比待抓取；涨停占优；主力流出收窄"}}, "src_style": {"金十数据": "#e6732e", "财联社": "#2f6fed", "东方财富": "#d93026"}};</script>
+<script>
+(function () {
+  const D = window.REPORT_DATA;
+  const RED='#d93026', GREEN='#0f9d58', GRAY='#9aa0a6', BLUE='#2f6fed';
+  const cc = v => v>0?RED:(v<0?GREEN:GRAY);
+  const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  document.getElementById('h-title').textContent = '📊 ' + D.date + ' 收盘财报（图表版）';
+  document.title = D.date + ' 收盘财报';
+  Chart.defaults.font.family = '-apple-system,"PingFang SC","Microsoft YaHei",sans-serif';
+  Chart.defaults.color = '#5f6368';
+  Chart.defaults.font.size = 12;
+
+  function bar(ctx, labels, vals, opt) {
+    opt = opt || {};
+    return new Chart(ctx, {
+      type: 'bar',
+      data: { labels, datasets: [{ data: vals, backgroundColor: opt.bg || vals.map(cc),
+        borderRadius: 4, maxBarThickness: opt.maxBar || 24 }] },
+      options: { indexAxis: opt.h ? 'y' : 'x', responsive: true, maintainAspectRatio: false,
+        plugins: { legend: { display: false },
+          tooltip: { callbacks: { label: c => opt.tip ? opt.tip(c.raw) : (c.raw + (opt.suffix||'')) } } },
+        scales: opt.scales || { x: { grid: { display: false } }, y: { grid: { display: false } } } }
+    });
+  }
+  function dough(ctx, labels, vals, colors, opt) {
+    opt = opt || {};
+    return new Chart(ctx, { type: 'doughnut',
+      data: { labels, datasets: [{ data: vals, backgroundColor: colors, borderWidth: 2, borderColor:'#fff' }] },
+      options: { responsive: true, maintainAspectRatio: false, cutout: opt.cutout || '58%',
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 10 } } } } });
+  }
+
+  // KPI 卡片
+  function kpi(v, l, color) {
+    return '<div class="kpi"><div class="v" style="color:'+(color||'#1f2329')+'">'+v+'</div><div class="l">'+l+'</div></div>';
+  }
+  const M = D.market;
+  const up = M.up==null ? D.breadth.up : M.up;
+  const down = M.down==null ? D.breadth.down : M.down;
+  const flat = M.flat==null ? D.breadth.flat : M.flat;
+  let k = '';
+  k += kpi((M.amount? M.amount.toLocaleString() : '—')+'亿', '两市成交额'+(M.prev_amount? ('（昨 '+M.prev_amount+'亿）'):''));
+  k += kpi((M.limit_up==null?'—':M.limit_up)+' : '+(M.limit_down==null?'—':M.limit_down), '涨停 : 跌停');
+  k += kpi(M.lianban, '连板高度');
+  document.getElementById('kpis').innerHTML = k;
+
+  // 指数
+  bar(document.getElementById('idxChart'),
+      D.indices.map(i=>i.name), D.indices.map(i=>i.chg),
+      { h:true, suffix:'%', tip:r=>r.toFixed(2)+'%',
+        scales:{ x:{ ticks:{ callback:v=>v+'%' }, grid:{ color:'#eee' } }, y:{ grid:{ display:false } } } });
+  // 涨跌家数 doughnut
+  dough(document.getElementById('breadthChart'),
+        ['上涨','下跌','平盘'], [up, down, flat||0], [RED, GREEN, GRAY]);
+  // 涨跌停
+  bar(document.getElementById('limitChart'),
+      ['涨停','跌停'], [M.limit_up||0, M.limit_down||0],
+      { bg:[RED, GREEN], tip:r=>r+' 家' });
+  // 外盘
+  bar(document.getElementById('externalChart'),
+      D.external.map(e=>e.name), D.external.map(e=>e.chg),
+      { h:true, suffix:'%', tip:r=>(r>0?'+':'')+r.toFixed(2)+'%',
+        scales:{ x:{ ticks:{ callback:v=>v+'%' }, grid:{ color:'#eee' } }, y:{ grid:{ display:false } } } });
+
+  document.getElementById('market-note').innerHTML =
+    (M.summary||'') +
+    ' ｜ 企稳判断：<b style="color:'+M.judge.color+'">'+M.judge.label+'</b>（'+M.judge.reasons+'）';
+
+  // 情绪 KPI
+  const B = D.breadth;
+  let mk = '';
+  mk += kpi(B.up+' 涨 / '+B.down+' 跌 / '+B.flat+' 平', '自选股涨跌分布');
+  mk += kpi((M.main_net_total==null?'—':(M.main_net_total>0?'+':'')+M.main_net_total.toFixed(1)+'亿'), '主力净'+(M.main_net_total>=0?'流入':'流出'));
+  mk += kpi((D.limit_up_names.length?('涨停：'+D.limit_up_names.join('、')):(D.limit_dn_names.length?('跌停：'+D.limit_dn_names.join('、')):'无明显异动')), '涨跌停标的');
+  document.getElementById('mood-kpis').innerHTML = mk;
+
+  // 板块资金流
+  bar(document.getElementById('sectorChart'),
+      D.sector_flow.map(s=>s.sector), D.sector_flow.map(s=>s.val),
+      { h:true, suffix:'亿', tip:r=>(r>0?'+':'')+r.toFixed(2)+'亿',
+        scales:{ x:{ ticks:{ callback:v=>v+'亿' }, grid:{ color:'#eee' } }, y:{ grid:{ display:false } } } });
+
+  // 自选股涨跌幅
+  bar(document.getElementById('quoteChart'),
+      D.quotes.map(q=>q.name.split(' ')[0]), D.quotes.map(q=>q.chg),
+      { h:true, suffix:'%',
+        tip:function(r, i){ const q=D.quotes[i.dataIndex]; return q.chg.toFixed(2)+'% ｜ 现价 '+q.price+' ｜ 主力 '+(q.main_net_str||'—'); },
+        scales:{ x:{ ticks:{ callback:v=>v+'%' }, grid:{ color:'#eee' } }, y:{ grid:{ display:false } } } });
+  // 相对大盘
+  bar(document.getElementById('vsChart'),
+      D.quotes.map(q=>q.name.split(' ')[0]), D.quotes.map(q=>q.vs_diff),
+      { h:true, suffix:'%',
+        tip:function(r, i){ const q=D.quotes[i.dataIndex]; return q.vs_word+' '+r.toFixed(2)+'%'; },
+        scales:{ x:{ ticks:{ callback:v=>v+'%' }, grid:{ color:'#eee' } }, y:{ grid:{ display:false } } } });
+  // 自选股分布 doughnut
+  dough(document.getElementById('holdChart'), ['涨','跌','平'], [B.up, B.down, B.flat], [RED, GREEN, GRAY]);
+  // 技术信号
+  dough(document.getElementById('techChart'),
+        D.tech_dist.map(t=>t.label), D.tech_dist.map(t=>t.val), D.tech_dist.map(t=>t.color));
+
+  // 风险
+  const rb = document.getElementById('risk-box');
+  if (!D.risks.length) {
+    rb.innerHTML = '<div class="card sec" style="background:#eef6ee;border-left-color:#0f9d58;">今日对自选股及持仓板块扫描，未触发重大利空风险事件预警。已持续监控金十/财联社/东方财富三大快讯源。</div>';
+  } else {
+    rb.innerHTML = D.risks.map(r =>
+      '<div class="card risk"><p class="ct"><b>涉及：'+esc(r.key)+'</b> ｜ '+esc(r.content)+'</p>'+
+      '<div class="meta">'+ (r.srcs||[]).map(s=>'<span class="badge" style="background:'+((D.src_style&&D.src_style[s])||'#888')+'">'+esc(s)+'</span>').join('') +
+      '<span class="senti" style="color:'+r.scol+'">'+r.senti+'</span>'+
+      (r.time?'<span>'+esc(r.time.slice(5))+'</span>':'') +'</div></div>'
+    ).join('');
+  }
+
+  // 新闻
+  function newsHTML(item) {
+    return '<div class="card news"><p class="ct">'+esc(item.content)+'</p>'+
+      '<div class="meta">'+ (item.srcs||[]).map(s=>'<span class="badge" style="background:'+((D.src_style&&D.src_style[s])||'#888')+'">'+esc(s)+'</span>').join('') +
+      '<span class="senti" style="color:'+item.scol+'">'+item.senti+'</span>'+
+      (item.time?'<span>'+esc(item.time.slice(5))+'</span>':'') +'</div></div>';
+  }
+  document.getElementById('news-box').innerHTML = D.stocks_news.map(s =>
+    '<p style="font-size:14px;font-weight:700;margin:10px 0 2px;">'+esc(s.name)+'</p>' +
+    s.items.map(newsHTML).join('')).join('');
+  document.getElementById('sec-news-box').innerHTML = D.sectors_news.map(s =>
+    '<p style="font-size:14px;font-weight:700;color:#2f6fed;margin:10px 0 2px;">板块要闻：'+esc(s.sector)+'</p>' +
+    s.items.map(newsHTML).join('')).join('');
+
+  // 明日
+  const mb = document.getElementById('movers-box');
+  if (!D.tomorrow.movers.length) {
+    mb.innerHTML = '<span class="muted">当日持仓无涨停/跌停/大幅波动标的。</span>';
+  } else {
+    mb.innerHTML = D.tomorrow.movers.map(m =>
+      '<span class="chip"><b>'+esc(m.name)+'</b> <b style="color:'+cc(m.chg)+'">'+(m.chg>0?'+':'')+m.chg.toFixed(2)+'%</b>（'+m.tag+'·'+m.note+'）</span>'
+    ).join('');
+  }
+  document.getElementById('lvl-table').innerHTML = D.tomorrow.levels.map(l =>
+    '<tr><td>'+esc(l.name)+'</td><td style="color:'+cc(l.chg)+';font-weight:700;">'+(l.chg>0?'+':'')+l.chg.toFixed(2)+'%</td>'+
+    '<td>压力 '+l.high+'</td><td>支撑 '+l.low+'</td></tr>').join('');
+  document.getElementById('watch-list').innerHTML = D.tomorrow.watch.map(w => '<li>'+esc(w)+'</li>').join('');
+  const jb = D.tomorrow.judge;
+  document.getElementById('judge-box').innerHTML = '<b>市场判断：</b><b style="color:'+jb.color+'">'+jb.label+'</b>（'+jb.reasons+'）<br><b>操作建议：</b>'+esc(D.tomorrow.position)+'。';
+  document.getElementById('review-box').innerHTML = '<b>复盘小结：</b>'+esc(D.tomorrow.review);
+})();
+</script>
+</body>
+</html>
