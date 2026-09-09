@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>收盘财报</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
 <style>
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 body { margin:0; background:#f5f6f7; color:#1f2329;
@@ -12,47 +13,47 @@ body { margin:0; background:#f5f6f7; color:#1f2329;
 .wrap { max-width:840px; margin:0 auto; padding:12px; }
 header { background:linear-gradient(135deg,#d93026,#b3271e); color:#fff;
   border-radius:14px; padding:16px 18px; box-shadow:0 4px 14px rgba(217,48,38,.25); }
-header h1 { margin:0; font-size:19px; font-weight:800; letter-spacing:.5px; }
+header h1 { margin:0; font-size:21px; font-weight:800; letter-spacing:.5px; }
 header p { margin:6px 0 0; font-size:12px; opacity:.92; line-height:1.5; }
 section { background:#fff; border-radius:14px; padding:14px 14px 16px; margin:12px 0;
   box-shadow:0 2px 10px rgba(0,0,0,.05); }
-h2 { font-size:15px; margin:0 0 10px; padding-left:9px; border-left:4px solid #d93026;
-  color:#1f2329; font-weight:700; }
+h2 { font-size:16px; margin:0 0 10px; padding-left:9px; border-left:4px solid #d93026;
+  color:#1f2329; font-weight:800; }
 h2.blue { border-left-color:#2f6fed; }
 .kpis { display:flex; flex-wrap:wrap; gap:8px; margin:6px 0 12px; }
 .kpi { flex:1 1 28%; min-width:90px; background:#fafafa; border:1px solid #f0f1f3;
   border-radius:10px; padding:9px 10px; text-align:center; }
-.kpi .v { font-size:18px; font-weight:800; }
-.kpi .l { font-size:11px; color:#646a73; margin-top:2px; }
+.kpi .v { font-size:20px; font-weight:800; }
+.kpi .l { font-size:12px; color:#646a73; margin-top:2px; }
 .chart-box { position:relative; width:100%; height:300px; margin:6px 0; }
 .chart-box.tall { height:460px; }
 .chart-box.sm { height:240px; }
 .split { display:flex; flex-wrap:wrap; gap:12px; }
 .split > div { flex:1 1 46%; min-width:260px; }
-.note { font-size:12px; color:#5f6368; line-height:1.7; margin:6px 0; }
+.note { font-size:13px; color:#5f6368; line-height:1.7; margin:6px 0; font-weight:700; }
 .judge { display:inline-block; font-size:13px; font-weight:700; padding:3px 10px;
   border-radius:20px; color:#fff; }
-.badge { display:inline-block; color:#fff; font-size:10px; padding:1px 6px;
+.badge { display:inline-block; color:#fff; font-size:11px; font-weight:700; padding:1px 6px;
   border-radius:3px; margin-right:4px; }
 .card { border-radius:10px; padding:10px 12px; margin:9px 0; }
 .card.news { background:#fff8e1; border-left:4px solid #f5a623; }
 .card.sec { background:#eef4ff; border-left:4px solid #2f6fed; }
 .card.risk { background:#fde8e8; border-left:4px solid #d93026; }
-.card .ct { margin:0 0 4px; font-size:13px; line-height:1.6; color:#333; }
+.card .ct { margin:0 0 4px; font-size:14px; line-height:1.6; color:#333; font-weight:700; }
 .card .meta { font-size:11px; color:#888; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .card .senti { font-weight:700; }
 .chip { display:inline-block; margin:3px 8px 3px 0; font-size:13px; }
 .chip b { font-weight:700; }
-table.lvl { border-collapse:collapse; width:100%; font-size:12px; margin-top:6px; }
+table.lvl { border-collapse:collapse; width:100%; font-size:13px; margin-top:6px; }
 table.lvl td { border:1px solid #eef0f2; padding:4px 6px; }
 ul.watch { margin:6px 0 0; padding-left:18px; }
-ul.watch li { font-size:13px; line-height:1.8; color:#444; }
+ul.watch li { font-size:14px; line-height:1.8; color:#444; }
 .tipbox { font-size:13px; line-height:1.8; border-radius:10px; padding:9px 12px; margin-top:8px; }
 .tipbox.amber { background:#fff8e1; border-left:4px solid #f5a623; }
 .tipbox.green { background:#eaf3de; border-left:4px solid #18a058; }
 .foot { color:#9aa0a6; font-size:11px; text-align:center; padding:14px 0 6px;
   border-top:1px solid #f0f1f3; margin-top:8px; }
-.muted { color:#9aa0a6; font-size:12px; }
+.muted { color:#9aa0a6; font-size:13px; }
 </style>
 </head>
 <body>
@@ -158,28 +159,46 @@ ul.watch li { font-size:13px; line-height:1.8; color:#444; }
   const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   document.getElementById('h-title').textContent = '📊 ' + D.date + ' 收盘财报（图表版）';
   document.title = D.date + ' 收盘财报';
+  Chart.register(window.ChartDataLabels);
   Chart.defaults.font.family = '-apple-system,"PingFang SC","Microsoft YaHei",sans-serif';
-  Chart.defaults.color = '#5f6368';
-  Chart.defaults.font.size = 12;
+  Chart.defaults.color = '#1f2329';
+  Chart.defaults.font.size = 14;
+  Chart.defaults.font.weight = 'bold';
 
   function bar(ctx, labels, vals, opt) {
     opt = opt || {};
+    const dl = opt.datalabels === false ? false : {
+      display: true, anchor: 'end', align: 'end', offset: 2,
+      formatter: opt.dlFormatter || (v => (v>0?'+':'')+v+(opt.suffix||'')),
+      color: opt.dlColor || (c => cc(c.dataset.data[c.dataIndex])),
+      font: { weight: 'bold', size: 13 },
+      textStrokeColor: '#fff', textStrokeWidth: 2, padding: 1
+    };
     return new Chart(ctx, {
       type: 'bar',
       data: { labels, datasets: [{ data: vals, backgroundColor: opt.bg || vals.map(cc),
         borderRadius: 4, maxBarThickness: opt.maxBar || 24 }] },
       options: { indexAxis: opt.h ? 'y' : 'x', responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: false },
+        layout: { padding: opt.h ? { right: 60, top: 6 } : { top: 22, bottom: 4 } },
+        plugins: { legend: { display: false }, datalabels: dl,
           tooltip: { callbacks: { label: c => opt.tip ? opt.tip(c.raw) : (c.raw + (opt.suffix||'')) } } },
         scales: opt.scales || { x: { grid: { display: false } }, y: { grid: { display: false } } } }
     });
   }
   function dough(ctx, labels, vals, colors, opt) {
     opt = opt || {};
+    const tot = vals.reduce((a,b)=>a+b,0) || 1;
+    const dl = opt.datalabels === false ? false : {
+      display: true, anchor: 'center', align: 'center',
+      formatter: v => opt.raw !== false ? (v + (opt.pct ? ' ('+(v/tot*100).toFixed(0)+'%)' : '')) : '',
+      color: '#fff', font: { weight: 'bold', size: 13 },
+      textStrokeColor: '#1f2329', textStrokeWidth: 3, padding: 2
+    };
     return new Chart(ctx, { type: 'doughnut',
       data: { labels, datasets: [{ data: vals, backgroundColor: colors, borderWidth: 2, borderColor:'#fff' }] },
       options: { responsive: true, maintainAspectRatio: false, cutout: opt.cutout || '58%',
-        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 10 } } } } });
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 10, font: { weight:'bold', size: 13 } } },
+          datalabels: dl } } });
   }
 
   // KPI 卡片
@@ -199,19 +218,19 @@ ul.watch li { font-size:13px; line-height:1.8; color:#444; }
   // 指数
   bar(document.getElementById('idxChart'),
       D.indices.map(i=>i.name), D.indices.map(i=>i.chg),
-      { h:true, suffix:'%', tip:r=>r.toFixed(2)+'%',
+      { h:true, suffix:'%', dlFormatter:r=>(r>0?'+':'')+r.toFixed(2)+'%', tip:r=>r.toFixed(2)+'%',
         scales:{ x:{ ticks:{ callback:v=>v+'%' }, grid:{ color:'#eee' } }, y:{ grid:{ display:false } } } });
   // 涨跌家数 doughnut
   dough(document.getElementById('breadthChart'),
-        ['上涨','下跌','平盘'], [up, down, flat||0], [RED, GREEN, GRAY]);
+        ['上涨','下跌','平盘'], [up, down, flat||0], [RED, GREEN, GRAY], {pct:true});
   // 涨跌停
   bar(document.getElementById('limitChart'),
       ['涨停','跌停'], [M.limit_up||0, M.limit_down||0],
-      { bg:[RED, GREEN], tip:r=>r+' 家' });
+      { bg:[RED, GREEN], dlFormatter:r=>r+' 家', tip:r=>r+' 家' });
   // 外盘
   bar(document.getElementById('externalChart'),
       D.external.map(e=>e.name), D.external.map(e=>e.chg),
-      { h:true, suffix:'%', tip:r=>(r>0?'+':'')+r.toFixed(2)+'%',
+      { h:true, suffix:'%', dlFormatter:r=>(r>0?'+':'')+r.toFixed(2)+'%', tip:r=>(r>0?'+':'')+r.toFixed(2)+'%',
         scales:{ x:{ ticks:{ callback:v=>v+'%' }, grid:{ color:'#eee' } }, y:{ grid:{ display:false } } } });
 
   document.getElementById('market-note').innerHTML =
@@ -229,26 +248,26 @@ ul.watch li { font-size:13px; line-height:1.8; color:#444; }
   // 板块资金流
   bar(document.getElementById('sectorChart'),
       D.sector_flow.map(s=>s.sector), D.sector_flow.map(s=>s.val),
-      { h:true, suffix:'亿', tip:r=>(r>0?'+':'')+r.toFixed(2)+'亿',
+      { h:true, suffix:'亿', dlFormatter:r=>(r>0?'+':'')+r.toFixed(2)+'亿', tip:r=>(r>0?'+':'')+r.toFixed(2)+'亿',
         scales:{ x:{ ticks:{ callback:v=>v+'亿' }, grid:{ color:'#eee' } }, y:{ grid:{ display:false } } } });
 
   // 自选股涨跌幅
   bar(document.getElementById('quoteChart'),
       D.quotes.map(q=>q.name.split(' ')[0]), D.quotes.map(q=>q.chg),
-      { h:true, suffix:'%',
+      { h:true, suffix:'%', dlFormatter:r=>(r>0?'+':'')+r.toFixed(2)+'%',
         tip:function(r, i){ const q=D.quotes[i.dataIndex]; return q.chg.toFixed(2)+'% ｜ 现价 '+q.price+' ｜ 主力 '+(q.main_net_str||'—'); },
         scales:{ x:{ ticks:{ callback:v=>v+'%' }, grid:{ color:'#eee' } }, y:{ grid:{ display:false } } } });
   // 相对大盘
   bar(document.getElementById('vsChart'),
       D.quotes.map(q=>q.name.split(' ')[0]), D.quotes.map(q=>q.vs_diff),
-      { h:true, suffix:'%',
+      { h:true, suffix:'%', dlFormatter:r=>(r>0?'+':'')+r.toFixed(2)+'%',
         tip:function(r, i){ const q=D.quotes[i.dataIndex]; return q.vs_word+' '+r.toFixed(2)+'%'; },
         scales:{ x:{ ticks:{ callback:v=>v+'%' }, grid:{ color:'#eee' } }, y:{ grid:{ display:false } } } });
   // 自选股分布 doughnut
-  dough(document.getElementById('holdChart'), ['涨','跌','平'], [B.up, B.down, B.flat], [RED, GREEN, GRAY]);
+  dough(document.getElementById('holdChart'), ['涨','跌','平'], [B.up, B.down, B.flat], [RED, GREEN, GRAY], {pct:true});
   // 技术信号
   dough(document.getElementById('techChart'),
-        D.tech_dist.map(t=>t.label), D.tech_dist.map(t=>t.val), D.tech_dist.map(t=>t.color));
+        D.tech_dist.map(t=>t.label), D.tech_dist.map(t=>t.val), D.tech_dist.map(t=>t.color), {pct:true});
 
   // 风险
   const rb = document.getElementById('risk-box');
