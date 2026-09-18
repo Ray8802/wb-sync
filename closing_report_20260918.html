@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>收盘财报</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+<style>
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+body { margin:0; background:#f5f6f7; color:#1f2329;
+  font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+.wrap { max-width:840px; margin:0 auto; padding:12px; }
+header { background:linear-gradient(135deg,#d93026,#b3271e); color:#fff;
+  border-radius:14px; padding:16px 18px; box-shadow:0 4px 14px rgba(217,48,38,.25); }
+header h1 { margin:0; font-size:21px; font-weight:800; letter-spacing:.5px; }
+header p { margin:6px 0 0; font-size:12px; opacity:.92; line-height:1.5; }
+section { background:#fff; border-radius:14px; padding:14px 14px 16px; margin:12px 0;
+  box-shadow:0 2px 10px rgba(0,0,0,.05); }
+h2 { font-size:16px; margin:0 0 10px; padding-left:9px; border-left:4px solid #d93026;
+  color:#1f2329; font-weight:800; }
+h2.blue { border-left-color:#2f6fed; }
+.kpis { display:flex; flex-wrap:wrap; gap:8px; margin:6px 0 12px; }
+.kpi { flex:1 1 28%; min-width:90px; background:#fafafa; border:1px solid #f0f1f3;
+  border-radius:10px; padding:9px 10px; text-align:center; }
+.kpi .v { font-size:20px; font-weight:800; }
+.kpi .l { font-size:12px; color:#646a73; margin-top:2px; }
+.chart-box { position:relative; width:100%; height:300px; margin:6px 0; }
+.chart-box.tall { height:460px; }
+.chart-box.sm { height:240px; }
+.split { display:flex; flex-wrap:wrap; gap:12px; }
+.split > div { flex:1 1 46%; min-width:260px; }
+.note { font-size:13px; color:#5f6368; line-height:1.7; margin:6px 0; font-weight:700; }
+.judge { display:inline-block; font-size:13px; font-weight:700; padding:3px 10px;
+  border-radius:20px; color:#fff; }
+.badge { display:inline-block; color:#fff; font-size:11px; font-weight:700; padding:1px 6px;
+  border-radius:3px; margin-right:4px; }
+.card { border-radius:10px; padding:10px 12px; margin:9px 0; }
+.card.news { background:#fff8e1; border-left:4px solid #f5a623; }
+.card.sec { background:#eef4ff; border-left:4px solid #2f6fed; }
+.card.risk { background:#fde8e8; border-left:4px solid #d93026; }
+.card .ct { margin:0 0 4px; font-size:14px; line-height:1.6; color:#333; font-weight:700; }
+.card .meta { font-size:11px; color:#888; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.card .senti { font-weight:700; }
+.chip { display:inline-block; margin:3px 8px 3px 0; font-size:13px; }
+.chip b { font-weight:700; }
+table.lvl { border-collapse:collapse; width:100%; font-size:13px; margin-top:6px; }
+table.lvl td { border:1px solid #eef0f2; padding:4px 6px; }
+ul.watch { margin:6px 0 0; padding-left:18px; }
+ul.watch li { font-size:14px; line-height:1.8; color:#444; }
+.tipbox { font-size:13px; line-height:1.8; border-radius:10px; padding:9px 12px; margin-top:8px; }
+.tipbox.amber { background:#fff8e1; border-left:4px solid #f5a623; }
+.tipbox.green { background:#eaf3de; border-left:4px solid #18a058; }
+.foot { color:#9aa0a6; font-size:11px; text-align:center; padding:14px 0 6px;
+  border-top:1px solid #f0f1f3; margin-top:8px; }
+.muted { color:#9aa0a6; font-size:13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1 id="h-title">📊 收盘财报（图表版）</h1>
+  <p id="h-sub">数据时效：A股/ETF/LOF/港股/韩股收盘 ｜ 新闻源：金十数据 / 财联社 / 东方财富</p>
+</header>
+
+<section>
+  <h2>一、大盘概况</h2>
+  <div class="kpis" id="kpis"></div>
+  <div class="split">
+    <div>
+      <div class="chart-box"><canvas id="idxChart"></canvas></div>
+      <p class="muted">指数涨跌幅（红涨绿跌）</p>
+    </div>
+    <div>
+      <div class="chart-box sm"><canvas id="breadthChart"></canvas></div>
+      <p class="muted">全市场涨跌家数分布</p>
+    </div>
+  </div>
+  <div class="split">
+    <div>
+      <div class="chart-box sm"><canvas id="limitChart"></canvas></div>
+      <p class="muted">涨停 / 跌停家数</p>
+    </div>
+    <div>
+      <div class="chart-box sm"><canvas id="externalChart"></canvas></div>
+      <p class="muted">外盘联动（隔夜）</p>
+    </div>
+  </div>
+  <p class="note" id="market-note"></p>
+</section>
+
+<section>
+  <h2>二、资金面与情绪</h2>
+  <div class="kpis" id="mood-kpis"></div>
+  <div class="chart-box"><canvas id="sectorChart"></canvas></div>
+  <p class="muted">持仓板块主力资金净流入（红=流入 / 绿=流出，单位：亿）</p>
+</section>
+
+<section>
+  <h2>三、自选股 15 只收盘</h2>
+  <div class="split">
+    <div>
+      <div class="chart-box tall"><canvas id="quoteChart"></canvas></div>
+      <p class="muted">涨跌幅（悬停看现价/主力净流入）</p>
+    </div>
+    <div>
+      <div class="chart-box tall"><canvas id="vsChart"></canvas></div>
+      <p class="muted">相对上证指数强弱</p>
+    </div>
+  </div>
+  <div class="split">
+    <div>
+      <div class="chart-box sm"><canvas id="holdChart"></canvas></div>
+      <p class="muted">自选股涨跌分布</p>
+    </div>
+    <div>
+      <div class="chart-box sm"><canvas id="techChart"></canvas></div>
+      <p class="muted">技术信号概览</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="blue">四、风险事件预警（利空）</h2>
+  <div id="risk-box"></div>
+</section>
+
+<section>
+  <h2>五、自选股重大新闻</h2>
+  <div id="news-box"></div>
+</section>
+
+<section>
+  <h2 class="blue">六、持仓板块要闻</h2>
+  <div id="sec-news-box"></div>
+</section>
+
+<section>
+  <h2>七、明日关注与关键价位</h2>
+  <p class="note" style="font-weight:700;color:#1f2329;">7.1 异动标的</p>
+  <div id="movers-box"></div>
+  <p class="note" style="font-weight:700;color:#1f2329;">7.2 关键价位（压力 / 支撑）</p>
+  <table class="lvl" id="lvl-table"></table>
+  <p class="note" style="font-weight:700;color:#1f2329;">7.3 明日日历 / 延续观察</p>
+  <ul class="watch" id="watch-list"></ul>
+  <div class="tipbox amber" id="judge-box"></div>
+  <div class="tipbox green" id="review-box"></div>
+</section>
+
+<div class="foot">本报表由系统自动生成，数据来自公开实时源，仅供个人复盘参考，不构成投资建议。</div>
+</div>
+
+<script>window.REPORT_DATA = {"date": "2026-09-18", "indices": [{"name": "上证指数", "val": "3911.87", "chg": 0.94}, {"name": "深证成指", "val": "13640.87", "chg": 1.72}, {"name": "创业板指", "val": "3372.68", "chg": 2.25}, {"name": "科创50", "val": "1652.63", "chg": 2.88}, {"name": "北证50", "val": "1044.34", "chg": 1.79}], "market": {"up": 3937, "down": 1109, "flat": 164, "limit_up": 118, "limit_down": 1, "amount": 20768.5, "prev_amount": null, "main_net_total": 392.31, "summary": "两市成交 20769 亿（沪深A股）；涨 3937 / 跌 1109（平 164），涨停 118 / 跌停 1；主力净流入 392 亿（北向资金自2024-08起暂停披露，以主力资金替代）。领涨：其他医疗服务 +6.72%；房产租赁经纪 +4.86%；半导体设备 +4.83%；领跌：涂料 -1.51%；种子 -1.52%；其他养殖 -3.47%。", "lianban": "待抓取", "judge": {"label": "震荡分化", "color": "#f5a623", "reasons": "涨多跌少；成交额对比待抓取；涨停占优；主力大幅流出"}}, "external": [{"name": "道琼斯", "chg": 0.61}, {"name": "纳斯达克", "chg": 1.69}, {"name": "恒生指数", "chg": 0.59}, {"name": "韩元兑美元", "chg": -0.2}, {"name": "WTI原油", "chg": -1.44}], "quotes": [{"name": "原油LOF易方达", "code": "161129", "price": 1.934, "chg": -0.72, "amount_str": "3.90 亿", "main_net_str": "+1312 万", "high": 1.955, "low": 1.924, "amplitude": 1.59, "type": "LOF", "currency": "CNY", "tech": "区间震荡", "vs_diff": -1.66, "vs_word": "跑输"}, {"name": "北方稀土", "code": "600111", "price": 36.86, "chg": 0.35, "amount_str": "13.51 亿", "main_net_str": "-1381 万", "high": 37.2, "low": 36.71, "amplitude": 1.33, "type": "股票", "currency": "CNY", "tech": "区间震荡", "vs_diff": -0.59, "vs_word": "跑输"}, {"name": "传媒ETF广发", "code": "512980", "price": 0.815, "chg": 0.87, "amount_str": "1.88 亿", "main_net_str": "-2729 万", "high": 0.816, "low": 0.806, "amplitude": 1.24, "type": "ETF", "currency": "CNY", "tech": "突破/收高位", "vs_diff": -0.07, "vs_word": "跑输"}, {"name": "长城军工", "code": "601606", "price": 32.76, "chg": 1.11, "amount_str": "7.36 亿", "main_net_str": "+218 万", "high": 33.16, "low": 32.24, "amplitude": 2.84, "type": "股票", "currency": "CNY", "tech": "区间震荡", "vs_diff": 0.17, "vs_word": "跑赢"}, {"name": "军工龙头ETF富国", "code": "512710", "price": 0.637, "chg": 1.11, "amount_str": "1.85 亿", "main_net_str": "-301 万", "high": 0.64, "low": 0.631, "amplitude": 1.43, "type": "ETF", "currency": "CNY", "tech": "区间震荡", "vs_diff": 0.17, "vs_word": "跑赢"}, {"name": "有色金属ETF南方", "code": "512400", "price": 1.732, "chg": 1.41, "amount_str": "5.69 亿", "main_net_str": "+5102 万", "high": 1.739, "low": 1.71, "amplitude": 1.7, "type": "ETF", "currency": "CNY", "tech": "区间震荡", "vs_diff": 0.47, "vs_word": "跑赢"}, {"name": "智能驾驶ETF华泰柏瑞", "code": "516520", "price": 1.037, "chg": 1.47, "amount_str": "0.22 亿", "main_net_str": "+444 万", "high": 1.041, "low": 1.028, "amplitude": 1.27, "type": "ETF", "currency": "CNY", "tech": "区间震荡", "vs_diff": 0.53, "vs_word": "跑赢"}, {"name": "岩山科技", "code": "002195", "price": 6.16, "chg": 1.65, "amount_str": "5.35 亿", "main_net_str": "+5418 万", "high": 6.17, "low": 6.08, "amplitude": 1.49, "type": "股票", "currency": "CNY", "tech": "突破/收高位", "vs_diff": 0.71, "vs_word": "跑赢"}, {"name": "黄金ETF博时", "code": "159937", "price": 8.988, "chg": 1.77, "amount_str": "9.15 亿", "main_net_str": "+132 万", "high": 9.005, "low": 8.875, "amplitude": 1.47, "type": "ETF", "currency": "CNY", "tech": "突破/收高位", "vs_diff": 0.83, "vs_word": "跑赢"}, {"name": "中国一重", "code": "601106", "price": 3.04, "chg": 2.01, "amount_str": "1.50 亿", "main_net_str": "+257 万", "high": 3.05, "low": 2.98, "amplitude": 2.35, "type": "股票", "currency": "CNY", "tech": "区间震荡", "vs_diff": 1.07, "vs_word": "跑赢"}, {"name": "中韩半导体ETF华泰柏瑞", "code": "513310", "price": 4.84, "chg": 2.07, "amount_str": "123.43 亿", "main_net_str": "+5706 万", "high": 4.884, "low": 4.827, "amplitude": 1.2, "type": "ETF", "currency": "CNY", "tech": "区间震荡", "vs_diff": 1.13, "vs_word": "跑赢"}, {"name": "卫星ETF永赢", "code": "159206", "price": 1.385, "chg": 2.59, "amount_str": "3.49 亿", "main_net_str": "+4345 万", "high": 1.39, "low": 1.357, "amplitude": 2.44, "type": "ETF", "currency": "CNY", "tech": "区间震荡", "vs_diff": 1.65, "vs_word": "跑赢"}, {"name": "国投白银LOF", "code": "161226", "price": 1.925, "chg": 2.67, "amount_str": "2.24 亿", "main_net_str": "+4281 万", "high": 1.929, "low": 1.894, "amplitude": 1.87, "type": "LOF", "currency": "CNY", "tech": "区间震荡", "vs_diff": 1.73, "vs_word": "跑赢"}, {"name": "SK海力士", "code": "000660", "price": 1857000.0, "chg": 6.42, "amount_str": "—", "main_net_str": "—", "high": 1857000.0, "low": 1805000.0, "amplitude": 2.98, "type": "股票", "currency": "KRW", "tech": "突破/收高位", "vs_diff": 5.48, "vs_word": "跑赢"}, {"name": "南方东英SK海力士", "code": "07709", "price": 43.44, "chg": 9.97, "amount_str": "49.32 亿", "main_net_str": "—", "high": 43.56, "low": 42.04, "amplitude": 3.85, "type": "股票", "currency": "HKD", "tech": "高波动震荡", "vs_diff": 9.03, "vs_word": "跑赢"}], "breadth": {"up": 14, "down": 1, "flat": 0}, "limit_up_names": ["南方东英SK海力士"], "limit_dn_names": [], "sector_flow": [{"sector": "传媒/短剧", "val": -0.27}, {"sector": "军工/国防", "val": 0.02}, {"sector": "智能驾驶", "val": 0.04}, {"sector": "原油/商品", "val": 0.13}, {"sector": "卫星/商业航天", "val": 0.43}, {"sector": "贵金属", "val": 0.44}, {"sector": "脑机接口/AI", "val": 0.54}, {"sector": "半导体/存储", "val": 0.57}, {"sector": "稀土/有色", "val": 0.8}], "tech_dist": [{"label": "突破/收高位", "val": 4, "color": "#d93026"}, {"label": "高波动震荡", "val": 1, "color": "#f5a623"}, {"label": "区间震荡", "val": 10, "color": "#9aa0a6"}], "risks": [{"key": "脑机接口/AI", "content": "2026年已被业内视为“人形机器人量产元年”。但比起机器人能不能走、会不会跳，产业界现在更关心的是：它能否进入真实岗位，稳定干活，并让客户算得过来账。热潮之下，短板仍然明显。核心部件受制约、真实场景应用不足、标准体系尚未统一，仍是产业规模化必须跨过的门槛。与此同时，市场预期与商业化进度之间的落差，也让“泡沫论”持续升温。近期宇树科技市值大幅回调，更让这一争议成为行业焦点。", "time": "2026-09-18 14:20:24", "srcs": ["东方财富"], "senti": "利空", "scol": "#0f9d58"}], "stocks_news": [{"name": "长城军工 601606", "items": [{"time": "2026-09-18 14:20:51", "srcs": ["东方财富"], "content": "财联社盯盘数据显示，今日主力资金净流入电子、半导体、通信等板块，净流出建筑材料、文化传媒、国防军工等板块，其中电子板块净流入170.88亿元。个股方面，华天科技资金净买入25.59亿元位居首位，兆易创新、中际旭创、新易盛主力资金净流入居前；中国巨石遭净卖出17.44亿元位居首位，中天科技、生益科技、C沈鼓主力资金净流出额居前。", "senti": "利好", "scol": "#d93026"}]}, {"name": "岩山科技 002195", "items": [{"time": "2026-09-18 09:14:43", "srcs": ["东方财富"], "content": "9月18日消息，工业和信息化部等十部门印发《医药工业发展“十五五”规划》。其中提到，重点发展高端计算机断层扫描（CT）、磁共振、多模态AI病理系统等AI辅助诊断产品及关键零部件。重点发展高端放射治疗系统、多模态AI手术导航定位系统、专科化和轻量化微创介入手术机器人等治疗设备。", "senti": "利好", "scol": "#d93026"}]}, {"name": "传媒ETF 512980", "items": [{"time": "2026-09-18 14:20:51", "srcs": ["东方财富"], "content": "财联社盯盘数据显示，今日主力资金净流入电子、半导体、通信等板块，净流出建筑材料、文化传媒、国防军工等板块，其中电子板块净流入170.88亿元。个股方面，华天科技资金净买入25.59亿元位居首位，兆易创新、中际旭创、新易盛主力资金净流入居前；中国巨石遭净卖出17.44亿元位居首位，中天科技、生益科技、C沈鼓主力资金净流出额居前。", "senti": "利好", "scol": "#d93026"}, {"time": "2026-09-18 13:37:15", "srcs": ["东方财富"], "content": "近期，影视飓风创始人Tim（潘天鸿）在飞书相关活动逛展时透露，自己最近在买携程上架的510万元太空船票；此前他在罗永浩播客的访谈中曾表示，人生的终极目标是去火星，甚至“死在火星也可以”。", "senti": "中性", "scol": "#646a73"}]}, {"name": "军工龙头ETF 512710", "items": [{"time": "2026-09-18 14:20:51", "srcs": ["东方财富"], "content": "财联社盯盘数据显示，今日主力资金净流入电子、半导体、通信等板块，净流出建筑材料、文化传媒、国防军工等板块，其中电子板块净流入170.88亿元。个股方面，华天科技资金净买入25.59亿元位居首位，兆易创新、中际旭创、新易盛主力资金净流入居前；中国巨石遭净卖出17.44亿元位居首位，中天科技、生益科技、C沈鼓主力资金净流出额居前。", "senti": "利好", "scol": "#d93026"}, {"time": "2026-09-18 10:31:30", "srcs": ["东方财富"], "content": "企查查APP显示，近日，西安金沙江电子有限公司发生工商变更，新增宁德时代（300750）全资子公司宁波梅山保税港区问鼎投资有限公司等为股东，同时注册资本增至1672.07万元。企查查信息显示，该公司成立于2023年，经营范围包含：新能源汽车换电设施销售；配电开关控制设备制造；新能源汽车电附件销售等。公开信息显示，该公司聚焦新材料创新与半导体科技，解决AI算力与商业航天时代的核心难题。", "senti": "利好", "scol": "#d93026"}]}, {"name": "卫星ETF 159206", "items": [{"time": "2026-09-18 10:18:31", "srcs": ["东方财富"], "content": "9月18日，商业航天概念活跃。相关ETF方面，全市场首只卫星ETF永赢（159206）盘中涨超2%，成分股高华科技涨超6%，航宇微涨超4%，航天电子、中国卫星、航宇科技、智明达等个股跟涨。", "senti": "利好", "scol": "#d93026"}, {"time": "2026-09-18 15:30:16", "srcs": ["金十数据"], "content": "9月18日从星际荣耀航天科技集团股份有限公司获悉，近日，该公司自主研制的双曲线三号运载火箭一子级甲烷贮箱、二子级共底贮箱极限载荷静力试验顺利完成。本次试验获取了贮箱极限承载能力及失效模式等关键数据。据悉，试验加载全过程数据测量采集系统工作稳定。一子级甲烷贮箱爆破压力与预示值偏差小于10%；二级共底贮箱上箱内压爆破值与预示值偏差小于15%，下箱内压爆破值与预示值偏差小于10%。结构失效模式与理论分析预判吻合，贮箱爆破形态符合设计预期。", "senti": "中性", "scol": "#646a73"}]}, {"name": "芯片ETF 159937", "items": [{"time": "2026-09-18 14:52:29", "srcs": ["东方财富"], "content": "根据集邦咨询（TrendForce）最新半导体先进封装产业研究，随着GPU厂商、超大型云端服务供应商（CSP）持续开发更强大、功能多元的AI芯片，2.5D封装技术的一项发展重点在于扩大封装面积。其中，台积电CoWoS-L尽管面临英特尔EMIB-T的竞争，但凭借其技术成熟度与良率优势，预计至2028年仍将是AI芯片的主流封装方案。", "senti": "中性", "scol": "#646a73"}, {"time": "2026-09-18 14:52:12", "srcs": ["东方财富"], "content": "天眼查App显示，近日，光环新网（广东横琴）算力服务有限公司成立，法定代表人为耿岩，注册资本1000万元人民币，经营范围含互联网数据服务、云计算装备技术服务、网络技术服务、信息技术咨询服务、计算机系统服务、数据处理和存储支持服务等。股东信息显示，该公司由北京光环新网科技股份有限公司全资持股。", "senti": "中性", "scol": "#646a73"}]}, {"name": "电池ETF 159216", "items": [{"time": "2026-09-18 14:58:47", "srcs": ["东方财富"], "content": "爱旭股份(600732)在9月18日举行的2026年半年度业绩说明会上表示，截至目前，济南基地首期3GW组件产能已全面投用中，配套建设的电池产能部分产线已陆续投产并逐步开始产能爬坡，四季度有望全面收尾并投入使用。", "senti": "中性", "scol": "#646a73"}, {"time": "2026-09-18 12:47:38", "srcs": ["东方财富"], "content": "9月17日晚，路透社援引两名知情人士消息称，小鹏计划把技术输出范围从合作伙伴大众汽车进一步扩大至其他海外车企，以开辟新的收入来源。其中一名知情人士称，小鹏已接触部分潜在合作伙伴，对方对其技术表现出兴趣。", "senti": "中性", "scol": "#646a73"}]}, {"name": "有色ETF 512400", "items": [{"time": "2026-09-18 05:59:42", "srcs": ["东方财富"], "content": "近期，国际铜价连续刷新历史高点。9月9日，伦敦金属交易所三个月期铜价格盘中一度升至每吨14858.5美元，再创历史新高，随后有所回落。国内沪铜主力合约同步站上每吨11万元关口。今年以来，国际铜价累计上涨约17%，近12个月涨幅达到47%。本轮铜价上涨，既受贸易政策预期、库存迁移、供给扰动等短期因素拉动，也折射出铜市场供需结构正在发生新的变化。", "senti": "利好", "scol": "#d93026"}, {"time": "2026-09-18 14:32:43", "srcs": ["东方财富"], "content": "据工信部消息，根据行业标准制修订计划，相关标准化技术组织已完成《有色金属行业科技成果评价规范》1项有色金属行业标准、《液体香皂》等6项轻工行业标准、《压剪试验机》等2项机械行业标准、《纺织行业科技成果评价规范》1项纺织行业标准的编制工作。为进一步听取社会各界意见，现予以公示。公示时间为2026年9月19日—2026年10月18日。", "senti": "中性", "scol": "#646a73"}]}, {"name": "国投白银LOF 161226", "items": [{"time": "2026-09-18 13:40:11", "srcs": ["东方财富"], "content": "现货白银日内涨幅扩大至2%，现报66.52美元/盎司，现货黄金突破4370美元/盎司，日内涨0.69%。", "senti": "利好", "scol": "#d93026"}, {"time": "2026-09-18 15:31:34", "srcs": ["东方财富"], "content": "现货白银向上触及67美元/盎司，日内上涨2.76%。", "senti": "中性", "scol": "#646a73"}]}, {"name": "商品LOF 161129", "items": [{"time": "2026-09-18 12:53:50", "srcs": ["东方财富"], "content": "随着美伊冲突重塑贸易路线并推动长途原油运输需求，全球掀起了一场价值超过200亿美元的巨型油轮采购热潮，船东今年订购的巨型油轮数量已达2025年全年的两倍多。航运分析平台Signal Group的数据显示，2026年迄今船东们已订购217艘超大型原油运输船（VLCC），而去年全年仅为93艘。", "senti": "中性", "scol": "#646a73"}, {"time": "2026-09-18 12:01:51", "srcs": ["东方财富"], "content": "天眼查App显示，近日，国泰君安期货有限公司发生工商变更，注册资本由70亿元人民币增至75亿元人民币。该公司成立于2000年4月，法定代表人为张烨烨，经营范围为商品期货经纪、金融期货经纪、期货投资咨询、资产管理。股东信息显示，该公司由国泰海通证券股份有限公司全资持股。", "senti": "中性", "scol": "#646a73"}]}, {"name": "中韩半导体ETF 513310", "items": [{"time": "2026-09-18 14:52:12", "srcs": ["东方财富"], "content": "天眼查App显示，近日，光环新网（广东横琴）算力服务有限公司成立，法定代表人为耿岩，注册资本1000万元人民币，经营范围含互联网数据服务、云计算装备技术服务、网络技术服务、信息技术咨询服务、计算机系统服务、数据处理和存储支持服务等。股东信息显示，该公司由北京光环新网科技股份有限公司全资持股。", "senti": "中性", "scol": "#646a73"}, {"time": "2026-09-18 14:30:43", "srcs": ["东方财富"], "content": "天眼查App显示，近日，北京捷成世纪智算科技有限公司成立，法定代表人为黎奕杰，注册资本1亿人民币，经营范围含互联网数据服务、数据处理和存储支持服务、人工智能应用软件开发等。股东信息显示，该公司由北京捷成世纪科技股份有限公司、海南炜辰科技服务合伙企业（有限合伙）共同持股。", "senti": "中性", "scol": "#646a73"}]}, {"name": "黄金ETF 518880", "items": [{"time": "2026-09-18 13:40:12", "srcs": ["东方财富"], "content": "2026年9月18日午后，黄金ETF博时(159937)跟踪指数AU9999上涨0.86%，早间一度涨超1%。拉长时间看，截至2026年9月17日，黄金ETF博时近1年累计上涨11.08%。", "senti": "利好", "scol": "#d93026"}, {"time": "2026-09-18 13:40:11", "srcs": ["东方财富"], "content": "现货白银日内涨幅扩大至2%，现报66.52美元/盎司，现货黄金突破4370美元/盎司，日内涨0.69%。", "senti": "利好", "scol": "#d93026"}]}, {"name": "南方东英SK海力士 07709", "items": [{"time": "2026-09-18 14:04:26", "srcs": ["东方财富"], "content": "SK海力士在硅谷设立旗下风投机构SKHynixVentures。", "senti": "中性", "scol": "#646a73"}, {"time": "2026-09-18 13:45:12", "srcs": ["东方财富"], "content": "SK海力士旗下Solidigm考虑在美国建设首座NAND闪存工厂。", "senti": "中性", "scol": "#646a73"}]}, {"name": "智能驾驶ETF 516520", "items": [{"time": "2026-09-18 14:54:21", "srcs": ["东方财富"], "content": "近日，九识宣布，已建成业内首个L4级万卡集群，算力集群总规模近1.5万卡。万卡集群是由超过一万张加速卡组成的高性能计算系统，用以训练基础大模型。九识表示，算力的层级将在基础设施上决定一家智驾企业的智能上限。", "senti": "中性", "scol": "#646a73"}, {"time": "2026-09-18 10:29:12", "srcs": ["东方财富"], "content": "9月18日，据报道，Waymo计划于2028年在新加坡推出其自动驾驶出租车服务。", "senti": "中性", "scol": "#646a73"}]}], "sectors_news": [{"sector": "军工/国防", "items": [{"time": "2026-09-18 14:20:51", "srcs": ["东方财富"], "content": "财联社盯盘数据显示，今日主力资金净流入电子、半导体、通信等板块，净流出建筑材料、文化传媒、国防军工等板块，其中电子板块净流入170.88亿元。个股方面，华天科技资金净买入25.59亿元位居首位，兆易创新、中际旭创、新易盛主力资金净流入居前；中国巨石遭净卖出17.44亿元位居首位，中天科技、生益科技、C沈鼓主力资金净流出额居前。", "senti": "利好", "scol": "#d93026"}, {"time": "2026-09-18 13:21:02", "srcs": ["东方财富"], "content": "意大利国防部长圭多·克罗塞托17日表示，鉴于近期曼德海峡安全风险上升，意大利正筹备一项海上任务，考虑出动海军保护本国商船航行安全。", "senti": "中性", "scol": "#646a73"}]}, {"sector": "卫星/商业航天", "items": [{"time": "2026-09-18 10:31:30", "srcs": ["东方财富"], "content": "企查查APP显示，近日，西安金沙江电子有限公司发生工商变更，新增宁德时代（300750）全资子公司宁波梅山保税港区问鼎投资有限公司等为股东，同时注册资本增至1672.07万元。企查查信息显示，该公司成立于2023年，经营范围包含：新能源汽车换电设施销售；配电开关控制设备制造；新能源汽车电附件销售等。公开信息显示，该公司聚焦新材料创新与半导体科技，解决AI算力与商业航天时代的核心难题。", "senti": "利好", "scol": "#d93026"}, {"time": "2026-09-18 10:18:31", "srcs": ["东方财富"], "content": "9月18日，商业航天概念活跃。相关ETF方面，全市场首只卫星ETF永赢（159206）盘中涨超2%，成分股高华科技涨超6%，航宇微涨超4%，航天电子、中国卫星、航宇科技、智明达等个股跟涨。", "senti": "利好", "scol": "#d93026"}]}, {"sector": "半导体/存储", "items": [{"time": "2026-09-18 14:52:29", "srcs": ["东方财富"], "content": "根据集邦咨询（TrendForce）最新半导体先进封装产业研究，随着GPU厂商、超大型云端服务供应商（CSP）持续开发更强大、功能多元的AI芯片，2.5D封装技术的一项发展重点在于扩大封装面积。其中，台积电CoWoS-L尽管面临英特尔EMIB-T的竞争，但凭借其技术成熟度与良率优势，预计至2028年仍将是AI芯片的主流封装方案。", "senti": "中性", "scol": "#646a73"}, {"time": "2026-09-18 14:52:12", "srcs": ["东方财富"], "content": "天眼查App显示，近日，光环新网（广东横琴）算力服务有限公司成立，法定代表人为耿岩，注册资本1000万元人民币，经营范围含互联网数据服务、云计算装备技术服务、网络技术服务、信息技术咨询服务、计算机系统服务、数据处理和存储支持服务等。股东信息显示，该公司由北京光环新网科技股份有限公司全资持股。", "senti": "中性", "scol": "#646a73"}]}, {"sector": "稀土/有色", "items": [{"time": "2026-09-18 14:48:56", "srcs": ["东方财富"], "content": "鑫科材料在9月18日召开的2026年半年度业绩说明会上表示，公司铜板带材总体暂无扩产计划，同时公司依托技术创新与精密制造能力的持续升级，带动全系列带材产品的结构性升级。", "senti": "利好", "scol": "#d93026"}, {"time": "2026-09-18 12:34:27", "srcs": ["东方财富"], "content": "据“神火集团”公众号消息，9月16日上午，神火集团年产5万吨钠离子高性能电池铝箔项目开工仪式在商丘市示范区举行。项目规划建设约4万平方米生产车间以及智能仓储系统。", "senti": "利好", "scol": "#d93026"}]}, {"sector": "锂电/储能", "items": [{"time": "2026-09-18 14:58:47", "srcs": ["东方财富"], "content": "爱旭股份(600732)在9月18日举行的2026年半年度业绩说明会上表示，截至目前，济南基地首期3GW组件产能已全面投用中，配套建设的电池产能部分产线已陆续投产并逐步开始产能爬坡，四季度有望全面收尾并投入使用。", "senti": "中性", "scol": "#646a73"}, {"time": "2026-09-18 12:47:38", "srcs": ["东方财富"], "content": "9月17日晚，路透社援引两名知情人士消息称，小鹏计划把技术输出范围从合作伙伴大众汽车进一步扩大至其他海外车企，以开辟新的收入来源。其中一名知情人士称，小鹏已接触部分潜在合作伙伴，对方对其技术表现出兴趣。", "senti": "中性", "scol": "#646a73"}]}, {"sector": "传媒/短剧", "items": [{"time": "2026-09-18 14:20:51", "srcs": ["东方财富"], "content": "财联社盯盘数据显示，今日主力资金净流入电子、半导体、通信等板块，净流出建筑材料、文化传媒、国防军工等板块，其中电子板块净流入170.88亿元。个股方面，华天科技资金净买入25.59亿元位居首位，兆易创新、中际旭创、新易盛主力资金净流入居前；中国巨石遭净卖出17.44亿元位居首位，中天科技、生益科技、C沈鼓主力资金净流出额居前。", "senti": "利好", "scol": "#d93026"}, {"time": "2026-09-18 13:37:15", "srcs": ["东方财富"], "content": "近期，影视飓风创始人Tim（潘天鸿）在飞书相关活动逛展时透露，自己最近在买携程上架的510万元太空船票；此前他在罗永浩播客的访谈中曾表示，人生的终极目标是去火星，甚至“死在火星也可以”。", "senti": "中性", "scol": "#646a73"}]}, {"sector": "贵金属", "items": [{"time": "2026-09-18 13:40:12", "srcs": ["东方财富"], "content": "2026年9月18日午后，黄金ETF博时(159937)跟踪指数AU9999上涨0.86%，早间一度涨超1%。拉长时间看，截至2026年9月17日，黄金ETF博时近1年累计上涨11.08%。", "senti": "利好", "scol": "#d93026"}, {"time": "2026-09-18 13:40:11", "srcs": ["东方财富"], "content": "现货白银日内涨幅扩大至2%，现报66.52美元/盎司，现货黄金突破4370美元/盎司，日内涨0.69%。", "senti": "利好", "scol": "#d93026"}]}, {"sector": "原油/商品", "items": [{"time": "2026-09-18 12:53:50", "srcs": ["东方财富"], "content": "随着美伊冲突重塑贸易路线并推动长途原油运输需求，全球掀起了一场价值超过200亿美元的巨型油轮采购热潮，船东今年订购的巨型油轮数量已达2025年全年的两倍多。航运分析平台Signal Group的数据显示，2026年迄今船东们已订购217艘超大型原油运输船（VLCC），而去年全年仅为93艘。", "senti": "中性", "scol": "#646a73"}, {"time": "2026-09-18 12:01:51", "srcs": ["东方财富"], "content": "天眼查App显示，近日，国泰君安期货有限公司发生工商变更，注册资本由70亿元人民币增至75亿元人民币。该公司成立于2000年4月，法定代表人为张烨烨，经营范围为商品期货经纪、金融期货经纪、期货投资咨询、资产管理。股东信息显示，该公司由国泰海通证券股份有限公司全资持股。", "senti": "中性", "scol": "#646a73"}]}, {"sector": "智能驾驶", "items": [{"time": "2026-09-18 14:54:21", "srcs": ["东方财富"], "content": "近日，九识宣布，已建成业内首个L4级万卡集群，算力集群总规模近1.5万卡。万卡集群是由超过一万张加速卡组成的高性能计算系统，用以训练基础大模型。九识表示，算力的层级将在基础设施上决定一家智驾企业的智能上限。", "senti": "中性", "scol": "#646a73"}, {"time": "2026-09-18 10:29:12", "srcs": ["东方财富"], "content": "9月18日，据报道，Waymo计划于2028年在新加坡推出其自动驾驶出租车服务。", "senti": "中性", "scol": "#646a73"}]}, {"sector": "脑机接口/AI", "items": [{"time": "2026-09-18 14:20:24", "srcs": ["东方财富"], "content": "2026年已被业内视为“人形机器人量产元年”。但比起机器人能不能走、会不会跳，产业界现在更关心的是：它能否进入真实岗位，稳定干活，并让客户算得过来账。热潮之下，短板仍然明显。核心部件受制约、真实场景应用不足、标准体系尚未统一，仍是产业规模化必须跨过的门槛。与此同时，市场预期与商业化进度之间的落差，也让“泡沫论”持续升温。近期宇树科技市值大幅回调，更让这一争议成为行业焦点。", "senti": "利空", "scol": "#0f9d58"}, {"time": "2026-09-18 14:09:03", "srcs": ["东方财富"], "content": "盘面上，两市冲高回落，算力板块上涨。相关ETF方面，创业板算力ETF天弘（158061）标的指数盘中涨2.07%，申购额达2000万份；成交额达1.29亿元；换手率达34.13%。成分股中，科泰电源、联特科技、太辰光、君正股份、金百泽涨超5%，欧陆通、明阳电路、中际旭创等多股跟涨。", "senti": "利好", "scol": "#d93026"}]}], "tomorrow": {"movers": [{"name": "南方东英SK海力士", "chg": 9.97, "tag": "涨停", "note": "明日观察连板动能/封单强度"}, {"name": "SK海力士", "chg": 6.42, "tag": "大涨", "note": "短线超买，注意冲高回落"}], "levels": [{"name": "南方东英SK海力士", "chg": 9.97, "high": 43.56, "low": 42.04}, {"name": "SK海力士", "chg": 6.42, "high": 1857000.0, "low": 1805000.0}, {"name": "国投白银LOF", "chg": 2.67, "high": 1.929, "low": 1.894}, {"name": "卫星ETF永赢", "chg": 2.59, "high": 1.39, "low": 1.357}, {"name": "中韩半导体ETF华泰柏瑞", "chg": 2.07, "high": 4.884, "low": 4.827}, {"name": "中国一重", "chg": 2.01, "high": 3.05, "low": 2.98}, {"name": "黄金ETF博时", "chg": 1.77, "high": 9.005, "low": 8.875}, {"name": "岩山科技", "chg": 1.65, "high": 6.17, "low": 6.08}, {"name": "智能驾驶ETF华泰柏瑞", "chg": 1.47, "high": 1.041, "low": 1.028}, {"name": "有色金属ETF南方", "chg": 1.41, "high": 1.739, "low": 1.71}, {"name": "长城军工", "chg": 1.11, "high": 33.16, "low": 32.24}, {"name": "军工龙头ETF富国", "chg": 1.11, "high": 0.64, "low": 0.631}, {"name": "传媒ETF广发", "chg": 0.87, "high": 0.816, "low": 0.806}, {"name": "北方稀土", "chg": 0.35, "high": 37.2, "low": 36.71}, {"name": "原油LOF易方达", "chg": -0.72, "high": 1.955, "low": 1.924}], "watch": ["脑机接口政策征求意见发酵，观察岩山科技续涨动能与换手", "军工板块连板高度与持续性（长城军工/中国一重）", "北方稀土主力净流出，观察资源股企稳信号"], "review": "今日市场震荡，自选股 14 涨 / 1 跌 / 0 平，合计主力净流入 2.28 亿。资金强势板块：稀土/有色，资金承压板块：传媒/短剧，分化明显。", "position": "强势标的可继续持有，跌破今日支撑则减仓", "judge": {"label": "震荡分化", "color": "#f5a623", "reasons": "涨多跌少；成交额对比待抓取；涨停占优；主力大幅流出"}}, "src_style": {"金十数据": "#e6732e", "财联社": "#2f6fed", "东方财富": "#d93026"}};</script>
+<script>
+(function () {
+  const D = window.REPORT_DATA;
+  const RED='#d93026', GREEN='#0f9d58', GRAY='#9aa0a6', BLUE='#2f6fed';
+  const cc = v => v>0?RED:(v<0?GREEN:GRAY);
+  const esc = s => String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  document.getElementById('h-title').textContent = '📊 ' + D.date + ' 收盘财报（图表版）';
+  document.title = D.date + ' 收盘财报';
+  Chart.register(window.ChartDataLabels);
+  Chart.defaults.font.family = '-apple-system,"PingFang SC","Microsoft YaHei",sans-serif';
+  Chart.defaults.color = '#1f2329';
+  Chart.defaults.font.size = 14;
+  Chart.defaults.font.weight = 'bold';
+
+  function bar(ctx, labels, vals, opt) {
+    opt = opt || {};
+    const dl = opt.datalabels === false ? false : {
+      display: true, anchor: 'end', align: 'end', offset: 2,
+      formatter: opt.dlFormatter || (v => (v>0?'+':'')+v+(opt.suffix||'')),
+      color: opt.dlColor || (c => cc(c.dataset.data[c.dataIndex])),
+      font: { weight: 'bold', size: 13 },
+      textStrokeColor: '#fff', textStrokeWidth: 2, padding: 1
+    };
+    return new Chart(ctx, {
+      type: 'bar',
+      data: { labels, datasets: [{ data: vals, backgroundColor: opt.bg || vals.map(cc),
+        borderRadius: 4, maxBarThickness: opt.maxBar || 24 }] },
+      options: { indexAxis: opt.h ? 'y' : 'x', responsive: true, maintainAspectRatio: false,
+        layout: { padding: opt.h ? { right: 60, top: 6 } : { top: 22, bottom: 4 } },
+        plugins: { legend: { display: false }, datalabels: dl,
+          tooltip: { callbacks: { label: c => opt.tip ? opt.tip(c.raw) : (c.raw + (opt.suffix||'')) } } },
+        scales: opt.scales || { x: { grid: { display: false } }, y: { grid: { display: false } } } }
+    });
+  }
+  function dough(ctx, labels, vals, colors, opt) {
+    opt = opt || {};
+    const tot = vals.reduce((a,b)=>a+b,0) || 1;
+    const dl = opt.datalabels === false ? false : {
+      display: true, anchor: 'center', align: 'center',
+      formatter: v => opt.raw !== false ? (v + (opt.pct ? ' ('+(v/tot*100).toFixed(0)+'%)' : '')) : '',
+      color: '#fff', font: { weight: 'bold', size: 13 },
+      textStrokeColor: '#1f2329', textStrokeWidth: 3, padding: 2
+    };
+    return new Chart(ctx, { type: 'doughnut',
+      data: { labels, datasets: [{ data: vals, backgroundColor: colors, borderWidth: 2, borderColor:'#fff' }] },
+      options: { responsive: true, maintainAspectRatio: false, cutout: opt.cutout || '58%',
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 10, font: { weight:'bold', size: 13 } } },
+          datalabels: dl } } });
+  }
+
+  // KPI 卡片
+  function kpi(v, l, color) {
+    return '<div class="kpi"><div class="v" style="color:'+(color||'#1f2329')+'">'+v+'</div><div class="l">'+l+'</div></div>';
+  }
+  const M = D.market;
+  const up = M.up==null ? D.breadth.up : M.up;
+  const down = M.down==null ? D.breadth.down : M.down;
+  const flat = M.flat==null ? D.breadth.flat : M.flat;
+  let k = '';
+  k += kpi((M.amount? M.amount.toLocaleString() : '—')+'亿', '两市成交额'+(M.prev_amount? ('（昨 '+M.prev_amount+'亿）'):''));
+  k += kpi((M.limit_up==null?'—':M.limit_up)+' : '+(M.limit_down==null?'—':M.limit_down), '涨停 : 跌停');
+  k += kpi(M.lianban, '连板高度');
+  document.getElementById('kpis').innerHTML = k;
+
+  // 指数
+  bar(document.getElementById('idxChart'),
+      D.indices.map(i=>i.name), D.indices.map(i=>i.chg),
+      { h:true, suffix:'%', dlFormatter:r=>(r>0?'+':'')+r.toFixed(2)+'%', tip:r=>r.toFixed(2)+'%',
+        scales:{ x:{ ticks:{ callback:v=>v+'%' }, grid:{ color:'#eee' } }, y:{ grid:{ display:false } } } });
+  // 涨跌家数 doughnut
+  dough(document.getElementById('breadthChart'),
+        ['上涨','下跌','平盘'], [up, down, flat||0], [RED, GREEN, GRAY], {pct:true});
+  // 涨跌停
+  bar(document.getElementById('limitChart'),
+      ['涨停','跌停'], [M.limit_up||0, M.limit_down||0],
+      { bg:[RED, GREEN], dlFormatter:r=>r+' 家', tip:r=>r+' 家' });
+  // 外盘
+  bar(document.getElementById('externalChart'),
+      D.external.map(e=>e.name), D.external.map(e=>e.chg),
+      { h:true, suffix:'%', dlFormatter:r=>(r>0?'+':'')+r.toFixed(2)+'%', tip:r=>(r>0?'+':'')+r.toFixed(2)+'%',
+        scales:{ x:{ ticks:{ callback:v=>v+'%' }, grid:{ color:'#eee' } }, y:{ grid:{ display:false } } } });
+
+  document.getElementById('market-note').innerHTML =
+    (M.summary||'') +
+    ' ｜ 企稳判断：<b style="color:'+M.judge.color+'">'+M.judge.label+'</b>（'+M.judge.reasons+'）';
+
+  // 情绪 KPI
+  const B = D.breadth;
+  let mk = '';
+  mk += kpi(B.up+' 涨 / '+B.down+' 跌 / '+B.flat+' 平', '自选股涨跌分布');
+  mk += kpi((M.main_net_total==null?'—':(M.main_net_total>0?'+':'')+M.main_net_total.toFixed(1)+'亿'), '主力净'+(M.main_net_total>=0?'流入':'流出'));
+  mk += kpi((D.limit_up_names.length?('涨停：'+D.limit_up_names.join('、')):(D.limit_dn_names.length?('跌停：'+D.limit_dn_names.join('、')):'无明显异动')), '涨跌停标的');
+  document.getElementById('mood-kpis').innerHTML = mk;
+
+  // 板块资金流
+  bar(document.getElementById('sectorChart'),
+      D.sector_flow.map(s=>s.sector), D.sector_flow.map(s=>s.val),
+      { h:true, suffix:'亿', dlFormatter:r=>(r>0?'+':'')+r.toFixed(2)+'亿', tip:r=>(r>0?'+':'')+r.toFixed(2)+'亿',
+        scales:{ x:{ ticks:{ callback:v=>v+'亿' }, grid:{ color:'#eee' } }, y:{ grid:{ display:false } } } });
+
+  // 自选股涨跌幅
+  bar(document.getElementById('quoteChart'),
+      D.quotes.map(q=>q.name.split(' ')[0]), D.quotes.map(q=>q.chg),
+      { h:true, suffix:'%', dlFormatter:r=>(r>0?'+':'')+r.toFixed(2)+'%',
+        tip:function(r, i){ const q=D.quotes[i.dataIndex]; return q.chg.toFixed(2)+'% ｜ 现价 '+q.price+' ｜ 主力 '+(q.main_net_str||'—'); },
+        scales:{ x:{ ticks:{ callback:v=>v+'%' }, grid:{ color:'#eee' } }, y:{ grid:{ display:false } } } });
+  // 相对大盘
+  bar(document.getElementById('vsChart'),
+      D.quotes.map(q=>q.name.split(' ')[0]), D.quotes.map(q=>q.vs_diff),
+      { h:true, suffix:'%', dlFormatter:r=>(r>0?'+':'')+r.toFixed(2)+'%',
+        tip:function(r, i){ const q=D.quotes[i.dataIndex]; return q.vs_word+' '+r.toFixed(2)+'%'; },
+        scales:{ x:{ ticks:{ callback:v=>v+'%' }, grid:{ color:'#eee' } }, y:{ grid:{ display:false } } } });
+  // 自选股分布 doughnut
+  dough(document.getElementById('holdChart'), ['涨','跌','平'], [B.up, B.down, B.flat], [RED, GREEN, GRAY], {pct:true});
+  // 技术信号
+  dough(document.getElementById('techChart'),
+        D.tech_dist.map(t=>t.label), D.tech_dist.map(t=>t.val), D.tech_dist.map(t=>t.color), {pct:true});
+
+  // 风险
+  const rb = document.getElementById('risk-box');
+  if (!D.risks.length) {
+    rb.innerHTML = '<div class="card sec" style="background:#eef6ee;border-left-color:#0f9d58;">今日对自选股及持仓板块扫描，未触发重大利空风险事件预警。已持续监控金十/财联社/东方财富三大快讯源。</div>';
+  } else {
+    rb.innerHTML = D.risks.map(r =>
+      '<div class="card risk"><p class="ct"><b>涉及：'+esc(r.key)+'</b> ｜ '+esc(r.content)+'</p>'+
+      '<div class="meta">'+ (r.srcs||[]).map(s=>'<span class="badge" style="background:'+((D.src_style&&D.src_style[s])||'#888')+'">'+esc(s)+'</span>').join('') +
+      '<span class="senti" style="color:'+r.scol+'">'+r.senti+'</span>'+
+      (r.time?'<span>'+esc(r.time.slice(5))+'</span>':'') +'</div></div>'
+    ).join('');
+  }
+
+  // 新闻
+  function newsHTML(item) {
+    return '<div class="card news"><p class="ct">'+esc(item.content)+'</p>'+
+      '<div class="meta">'+ (item.srcs||[]).map(s=>'<span class="badge" style="background:'+((D.src_style&&D.src_style[s])||'#888')+'">'+esc(s)+'</span>').join('') +
+      '<span class="senti" style="color:'+item.scol+'">'+item.senti+'</span>'+
+      (item.time?'<span>'+esc(item.time.slice(5))+'</span>':'') +'</div></div>';
+  }
+  document.getElementById('news-box').innerHTML = D.stocks_news.map(s =>
+    '<p style="font-size:14px;font-weight:700;margin:10px 0 2px;">'+esc(s.name)+'</p>' +
+    s.items.map(newsHTML).join('')).join('');
+  document.getElementById('sec-news-box').innerHTML = D.sectors_news.map(s =>
+    '<p style="font-size:14px;font-weight:700;color:#2f6fed;margin:10px 0 2px;">板块要闻：'+esc(s.sector)+'</p>' +
+    s.items.map(newsHTML).join('')).join('');
+
+  // 明日
+  const mb = document.getElementById('movers-box');
+  if (!D.tomorrow.movers.length) {
+    mb.innerHTML = '<span class="muted">当日持仓无涨停/跌停/大幅波动标的。</span>';
+  } else {
+    mb.innerHTML = D.tomorrow.movers.map(m =>
+      '<span class="chip"><b>'+esc(m.name)+'</b> <b style="color:'+cc(m.chg)+'">'+(m.chg>0?'+':'')+m.chg.toFixed(2)+'%</b>（'+m.tag+'·'+m.note+'）</span>'
+    ).join('');
+  }
+  document.getElementById('lvl-table').innerHTML = D.tomorrow.levels.map(l =>
+    '<tr><td>'+esc(l.name)+'</td><td style="color:'+cc(l.chg)+';font-weight:700;">'+(l.chg>0?'+':'')+l.chg.toFixed(2)+'%</td>'+
+    '<td>压力 '+l.high+'</td><td>支撑 '+l.low+'</td></tr>').join('');
+  document.getElementById('watch-list').innerHTML = D.tomorrow.watch.map(w => '<li>'+esc(w)+'</li>').join('');
+  const jb = D.tomorrow.judge;
+  document.getElementById('judge-box').innerHTML = '<b>市场判断：</b><b style="color:'+jb.color+'">'+jb.label+'</b>（'+jb.reasons+'）<br><b>操作建议：</b>'+esc(D.tomorrow.position)+'。';
+  document.getElementById('review-box').innerHTML = '<b>复盘小结：</b>'+esc(D.tomorrow.review);
+})();
+</script>
+</body>
+</html>
